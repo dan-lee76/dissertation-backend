@@ -12,7 +12,7 @@ print (time.time() - t)
 # fig, ax = ox.plot_graph(G)
 
 start_node = ox.distance.nearest_nodes(G, X=-1.8160056925378616, Y=53.36486137451511)
-end_node = ox.distance.nearest_nodes(G, Y=53.35510304745989, X=-1.8055002497162305)
+end_node = ox.nearest_nodes(G, Y=53.34344386440596, X=-1.778107050662822)
 
 print(f"Amount of Nodes: {len(G.nodes)}")
 print(f"Amount of Edges: {len(G.edges)}")
@@ -52,7 +52,7 @@ def get_all_paths(G, start_node, end_node, cutoff = 25, target_distance = 10, to
 
     yield from dfs(start_node, end_node, [], set(), 0, 0)
 
-distance_km = 15
+distance_km = 10
 tollerance = 1
 
 print("Generating Route")
@@ -61,14 +61,14 @@ print(time.time() - t)
 
 def iddfs(graph, start_node, end_node, maxDepth, target_distance):
     t = time.time()
-    for depth in range(maxDepth):
+    for depth in range(30, maxDepth):
         print(f"Depth: {depth}")
         # for path in nx.all_simple_paths(G, start_node, end_node, depth):
         for path in get_all_paths(graph, start_node, end_node, depth, target_distance):
             distance = calculate_path_distance(G, path) / 1000
             # print(f"Distance: {distance}")
             # fig, ax = ox.plot_graph_route(G, path, route_linewidth=6, node_size=0, bgcolor='k')
-            if distance_km - tollerance <= distance <= distance_km + tollerance:
+            if 14.5 <= distance <= 15.5:
                 print(time.time() - t)
                 print(f"Route Found\nDistance: {distance}")
                 fig, ax = ox.plot_graph_route(G, path, route_linewidth=6, node_size=0, bgcolor='k')

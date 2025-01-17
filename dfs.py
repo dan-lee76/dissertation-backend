@@ -24,13 +24,15 @@ end_node = ox.distance.nearest_nodes(G, Y=53.35510304745989, X=-1.80550024971623
 # ax = nodes.plot(ax=ax, color="red", markersize=2.5)
 
 # ox.plot_graph(G, figsize=(6,6), edge_color="grey", node_color="red", node_size=2)
-# astar_path = nx.astar_path(G, start_node, end_node, weight='length')
+t= time.time()
+astar_path = nx.astar_path(G, start_node, end_node, weight='length')
+print(f"A*:{time.time() - t}")
 
 # t = time.time()
 # route = ox.shortest_path(G, start_node, end_node, weight='length')
 # print ("A Star", time.time() - t)
 #
-# fig, ax = ox.plot_graph_route(G, route, route_linewidth=6, node_size=0, bgcolor='k')
+fig, ax = ox.plot_graph_route(G, astar_path, route_linewidth=6, node_size=0, bgcolor='k')
 
 # t = time.time()
 # astar_path = nx.astar_path(G, start_node, end_node, weight='length')
