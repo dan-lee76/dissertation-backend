@@ -12,55 +12,56 @@ print(time.time() - t)
 t= time.time()
 G = ox.graph_from_point((53.36486137451511, -1.8160056925378616), dist=8000, network_type='walk', dist_type="network")
 print (time.time() - t)
-
-start_node = ox.nearest_nodes(G, X=-1.8160056925378616, Y=53.36486137451511)
-end_node = ox.nearest_nodes(G, Y=53.34344386440596, X=-1.778107050662822)
-
-# G = ox.simplification.simplify_graph(G)
-# fig, ax = ox.plot_graph(G,  node_size=0, bgcolor='k')
-
-route = nx.astar_path(G, start_node, end_node, weight='length')
-
-route_coords = [(G.nodes[node]['y'], G.nodes[node]['x']) for node in route]
-print(route_coords)
-route_line = LineString(route_coords)
-
-target_distance = 15
-
-buffer_distance = target_distance*0.0025
-route_buffer = route_line.buffer(buffer_distance, quad_segs=1)
-
-print(route_buffer)
-
-gdf = gpd.GeoDataFrame({'geometry': [route_buffer]}, crs="EPSG:4326")
-print(f"gdf:{gdf}")
-gdf.to_file("route_buffer.geojson", driver="GeoJSON")
-random_polygon = gdf.sample(n=1).iloc[0].geometry
-
-# Get the exterior (boundary) of the polygon
-boundary = random_polygon.exterior
-
-# Extract coordinates of the boundary as a list of tuples
-coords = list(boundary.coords)
-
-# Select a random coordinate
-random_coord = random.choice(coords)
-
-# Convert to a Point geometry
-random_node = Point(random_coord)
-
-print("Random node:", random_node)
-print(f"Random node coords: {random_node.x}, {random_node.y}")
-random_node2 = ox.distance.nearest_nodes(G, X=random_node.y, Y=random_node.x)
-print("Random node:", G[random_node2])
-
-route1 = nx.astar_path(G, start_node, random_node2, weight='length')
-route2 = nx.astar_path(G, random_node2, end_node, weight='length')
+#
+# start_node = ox.nearest_nodes(G, X=-1.8160056925378616, Y=53.36486137451511)
+# end_node = ox.nearest_nodes(G, Y=53.34344386440596, X=-1.778107050662822)
+#
+# # G = ox.simplification.simplify_graph(G)
+# # fig, ax = ox.plot_graph(G,  node_size=0, bgcolor='k')
+#
+# route = nx.astar_path(G, start_node, end_node, weight='length')
+#
+# route_coords = [(G.nodes[node]['y'], G.nodes[node]['x']) for node in route]
+# print(route_coords)
+# route_line = LineString(route_coords)
+#
+# global target_distance
+# target_distance = 15
+#
+# buffer_distance = target_distance*0.0025
+# route_buffer = route_line.buffer(buffer_distance, quad_segs=1)
+#
+# print(route_buffer)
+#
+# gdf = gpd.GeoDataFrame({'geometry': [route_buffer]}, crs="EPSG:4326")
+# print(f"gdf:{gdf}")
+# gdf.to_file("route_buffer.geojson", driver="GeoJSON")
+# random_polygon = gdf.sample(n=1).iloc[0].geometry
+#
+# # Get the exterior (boundary) of the polygon
+# boundary = random_polygon.exterior
+#
+# # Extract coordinates of the boundary as a list of tuples
+# coords = list(boundary.coords)
+#
+# # Select a random coordinate
+# random_coord = random.choice(coords)
+#
+# # Convert to a Point geometry
+# random_node = Point(random_coord)
+#
+# print("Random node:", random_node)
+# print(f"Random node coords: {random_node.x}, {random_node.y}")
+# random_node2 = ox.distance.nearest_nodes(G, X=random_node.y, Y=random_node.x)
+# print("Random node:", G[random_node2])
+#
+# route1 = nx.astar_path(G, start_node, random_node2, weight='length')
+# route2 = nx.astar_path(G, random_node2, end_node, weight='length')
 
 def merge_route(route1, route2):
     return route1[:-1] + route2
 
-merged_route = merge_route(route1, route2)
+# merged_route = merge_route(route1, route2)
 # fig, ax = ox.plot_graph_route(G, merged_route, route_linewidth=6, node_size=0, bgcolor='k')
 # fig, ax = ox.plot_graph_route(G, route1, route_linewidth=6, node_size=0, bgcolor='k')
 # fig, ax = ox.plot_graph_route(G, route2, route_linewidth=6, node_size=0, bgcolor='k')
@@ -250,35 +251,66 @@ def astar_path(G, source, target, route1, heuristic=None, weight="weight", *, cu
 
     raise nx.NetworkXNoPath(f"Node {target} not reachable from {source}")
 
-n = ox.distance.nearest_nodes(G, Y=53.383737141983225, X=-1.848105996648731)
-n2 = ox.distance.nearest_nodes(G, Y=53.35339694450694, X=-1.8666549539010102)
-route1 = nx.astar_path(G, start_node, n, weight='length')
-route3 = astar_path(G, n, n2, route1, weight='length')
-route4 = astar_path(G, n2, end_node, route1, weight='length')
-merged_route = merge_route(route1, route3)
-merged_route = merge_route(merged_route, route4)
-distance = calculate_path_distance(G, merged_route) / 1000
-print(f"Distance: {distance}")
-fig, ax = ox.plot_graph_route(G, merged_route, route_linewidth=6, node_size=0, bgcolor='k')
-# for node in coords:
-#     point = Point(node)
-#     converted_node = ox.distance.nearest_nodes(G, X=point.y, Y=point.x)
-#     route1 = nx.astar_path(G, start_node, converted_node, weight='length')
-#     try:
-#         route3 = astar_path(G, converted_node, end_node, route1, weight='length')
-#     except nx.NetworkXNoPath:
-#         continue
-#     merged_route = merge_route(route1, route3)
-#     distance = calculate_path_distance(G, merged_route) / 1000
-#     print(f"Distance: {distance}")
-#     if target_distance -1 < distance < target_distance + 1:
-#         print(f"Distance Achieved: {distance}")
-#         # fig, ax = ox.plot_graph_route(G, route1, route_linewidth=6, node_size=0, bgcolor='k')
-#         # fig, ax = ox.plot_graph_route(G, route3, route_linewidth=6, node_size=0, bgcolor='k')
-#         fig, ax = ox.plot_graph_route(G, merged_route, route_linewidth=6, node_size=0, bgcolor='k')
-        # print("New")
+def route_to_coords(route):
+    return [(G.nodes[node]['y'], G.nodes[node]['x']) for node in route]
+
+def a_star_assisted(G, start_node, end_node, route1, route2, heuristic=None, weight="weight", *, cutoff=None):
+    n = ox.distance.nearest_nodes(G, Y=53.383737141983225, X=-1.848105996648731)
+    n2 = ox.distance.nearest_nodes(G, Y=53.35339694450694, X=-1.8666549539010102)
+    route1 = nx.astar_path(G, start_node, n, weight='length')
+    route3 = astar_path(G, n, n2, route1, weight='length')
+    route4 = astar_path(G, n2, end_node, route1, weight='length')
+    merged_route = merge_route(route1, route3)
+    merged_route = merge_route(merged_route, route4)
+    distance = calculate_path_distance(G, merged_route) / 1000
+    print(f"Distance: {distance}")
+    # fig, ax = ox.plot_graph_route(G, merged_route, route_linewidth=6, node_size=0, bgcolor='k')
+    return route_to_coords(merged_route)
 
 
+def generate_route(target_distance, x1=-1.8160056925378616, y1=53.36486137451511, x2=-1.778107050662822, y2=53.34344386440596):
+    t= time.time()
+    start_node = ox.nearest_nodes(G, X=-1.8160056925378616, Y=53.36486137451511)
+    end_node = ox.nearest_nodes(G, Y=53.34344386440596, X=-1.778107050662822)
+
+    # G = ox.simplification.simplify_graph(G)
+    # fig, ax = ox.plot_graph(G,  node_size=0, bgcolor='k')
+
+    route = nx.astar_path(G, start_node, end_node, weight='length')
+    route_coords = [(G.nodes[node]['x'], G.nodes[node]['y']) for node in route]
+    route_line = LineString(route_coords)
+    buffer_distance = target_distance * 0.0025
+    route_buffer = route_line.buffer(buffer_distance, quad_segs=1)
+    gdf = gpd.GeoDataFrame({'geometry': [route_buffer]}, crs="EPSG:3857")
+    gdf.to_file("route_buffer.geojson", driver="GeoJSON")
+    random_polygon = gdf.sample(n=1).iloc[0].geometry
+
+    boundary = random_polygon.exterior
+    coords = list(boundary.coords)
+
+    for node in coords:
+        point = Point(node)
+        # print(point)
+        converted_node = ox.distance.nearest_nodes(G, X=point.x, Y=point.y)
+        route1 = nx.astar_path(G, start_node, converted_node, weight='length')
+        try:
+            route3 = astar_path(G, converted_node, end_node, route1, weight='length')
+        except nx.NetworkXNoPath:
+            continue
+        merged_route = merge_route(route1, route3)
+        distance = calculate_path_distance(G, merged_route) / 1000
+        # print(f"Distance: {distance}")
+        if target_distance - 1 < distance < target_distance + 1:
+            print(f"Distance Achieved: {distance}")
+            print(f"Time: {time.time() - t}")
+            route = merged_route
+            # fig, ax = ox.plot_graph_route(G, route1, route_linewidth=6, node_size=0, bgcolor='k')
+            # fig, ax = ox.plot_graph_route(G, route3, route_linewidth=6, node_size=0, bgcolor='k')
+            # fig, ax = ox.plot_graph_route(G, merged_route, route_linewidth=6, node_size=0, bgcolor='k')
+            break
+    return route_to_coords(route)
+
+generate_route(10)
 # for node in coords:
 #     point = Point(node)
 #     converted_node = ox.distance.nearest_nodes(G, X=point.y, Y=point.x)
