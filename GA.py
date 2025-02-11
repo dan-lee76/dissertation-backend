@@ -3,21 +3,28 @@ import networkx as nx
 import random
 import numpy as np
 import osmnx.distance
-import shapely
 
 
-# Define the memetic algorithm class
+
 class MemeticAlgorithm:
-    def __init__(self, graph, start_node, target_distance, population_size=100, generations=100, mutation_rate=0.2):
+    def __init__(self, graph, start_node, end_node, target_distance, population_size=100, generations=100, mutation_rate=0.2):
         self.graph = graph
         self.start_node = start_node
+        self.end_node = end_node
         self.target_distance = target_distance
         self.population_size = population_size
         self.generations = generations
         self.mutation_rate = mutation_rate
 
+    def euclidean_distance(self, node1, node2):
+        # Implement your actual coordinate-based distance calculation here
+        return abs(osmnx.distance.euclidean(self.graph.nodes[node1]['y'], self.graph.nodes[node1]['x'], self.graph.nodes[node2]['y'], self.graph.nodes[node2]['x']))
+
     def initialize_population(self):
         population = []
+        heuristic = {node: self.euclidean_distance(node, self.end_node)
+                     for node in self.graph.nodes()}
+        print(f"Heuristic: {heuristic}")
         for _ in range(self.population_size):
             individual = [self.start_node]
             visited = [self.start_node]
@@ -26,7 +33,12 @@ class MemeticAlgorithm:
                 # print(f"Neighbors: {neighbors}")
                 neighbors = [neighbor for neighbor in neighbors if neighbor not in visited]
                 if len(neighbors) != 0:
-                    next_node = random.choice(neighbors)
+                    weights = [1 / (heuristic[n] + 0.001) for n in neighbors]
+                    total_weight = sum(weights)
+                    probabilities = [w / total_weight for w in weights]
+                    # print(f"Probabilities: {probabilities}")
+                    next_node = np.random.choice(neighbors, p=probabilities)
+                    # next_node = random.choice(neighbors)
                     if next_node not in visited:
                         individual.append(next_node)
                         visited.append(next_node)
@@ -56,15 +68,15 @@ class MemeticAlgorithm:
         return population
 
     def route_distance(self, route):
-        # distance = 0
-        # for i in range(len(route) - 1):
-        #     distance += self.graph.edges[route[i], route[i + 1], 0]['length']
-        # # print(f"Distance: {distance}")
-        # return distance
-        distance = []
-        for u, v in zip(route[:-1], route[1:]):
-            distance.append(self.graph[u][v][0]['length'])
-        return sum(distance)
+        distance = 0
+        for i in range(len(route) - 1):
+            distance += self.graph.edges[route[i], route[i + 1], 0]['length']
+        # print(f"Distance: {distance}")
+        return distance
+        # distance = []
+        # for u, v in zip(route[:-1], route[1:]):
+        #     distance.append(self.graph[u][v][0]['length'])
+        # return sum(distance)
 
     def route_distance_from_end_node(self, route):
         # path = ox.shortest_path(G, self.start_node, route[-1])
@@ -73,7 +85,7 @@ class MemeticAlgorithm:
         # p2 = shapely.Point(self.graph.nodes[self.start_node]['y'], self.graph.nodes[self.start_node]['x'])
         # dist2 = shapely.distance(p1, p2)
         #
-        dist = osmnx.distance.euclidean(self.graph.nodes[route[-1]]['y'], self.graph.nodes[route[-1]]['x'], self.graph.nodes[self.start_node]['y'], self.graph.nodes[self.start_node]['x']) * 100000
+        dist = osmnx.distance.euclidean(self.graph.nodes[route[-1]]['y'], self.graph.nodes[route[-1]]['x'], self.graph.nodes[self.end_node]['y'], self.graph.nodes[self.end_node]['x']) * 100000
         #
         # print(f"Distance from end node via euclidean: {distance*100000}\t Distance from end node via shortest path: {dist}\t Distance from end node via shapely: {dist2}")
 
@@ -89,27 +101,45 @@ class MemeticAlgorithm:
         # print(f"Fitness: {dist_end}")
         # print(-abs(self.target_distance - dist),-abs(dist_end))
         # return -abs(dist_end)
-        return  -abs(self.target_distance - dist)+(-abs(dist_end))
+        return  (-abs(self.target_distance - dist)+(-abs(dist_end)))/1000
 
-    def selection(self, population):
+    def selection(self, population): #Probability/roulette selection
         scores = [self.fitness(ind) for ind in population]
         probabilities = np.exp(scores) / sum(np.exp(scores))
+        # print(f"Probabilities: {probabilities}")
+        # print(f"Scores: {scores}")
         try:
             selected = random.choices(population, probabilities, k=2)
         except:
             print(f"Probabilities: {probabilities}")
         return selected
 
-    def crossover(self, parent1, parent2): #Brings two marents together
+    def crossover(self, parent1, parent2): #Brings two parents together
         cut1 = random.randint(1, len(parent1) - 2)
         cut2 = random.randint(1, len(parent2) - 2)
+        # p1_dis_end = self.route_distance_from_end_node(parent1)
+        # p2_dis_end = self.route_distance_from_end_node(parent2)
         # ox.plot_graph_route(self.graph, parent1)
         # ox.plot_graph_route(self.graph, parent2)
+        # print(f"Parent 1 Distance: {p1_dis_end}\tParent 2 Distance: {p2_dis_end}")
+        # if p1_dis_end < p2_dis_end:
+        #     child_bridge = nx.astar_path(self.graph, parent2[cut2 - 1], parent1[cut1], weight="length")
+        #     return parent2[:cut2 + 1] + child_bridge + parent1[cut1 - 1:]
+        # else:
+        #     child_bridge = nx.astar_path(self.graph, parent1[cut1 - 1], parent2[cut2], weight="length")
+        #     return parent1[:cut1 + 1] + child_bridge + parent2[cut2 - 1:]
+
+        # ox.plot_graph_route(self.graph, parent1)
+        # ox.plot_graph_route(self.graph, parent2)
+        # ox.plot_graph_route(self.graph, parent1[:cut1])
+        # ox.plot_graph_route(self.graph, parent2[:cut2])
         # child = parent1[:cut1] + [node for node in parent2[cut2:] if node not in parent1[:cut1]]
+
         child_bridge = nx.astar_path(self.graph, parent1[cut1-1], parent2[cut2], weight="length")
-        child = parent1[:cut1+1] + child_bridge + parent2[cut2-1:]
+        return parent1[:cut1+1] + child_bridge + parent2[cut2-1:]
+
         # ox.plot_graph_route(self.graph, child)
-        return child
+        # return child
 
     def mutate(self, individual): #Fix this
         if random.random() < self.mutation_rate:
@@ -121,17 +151,23 @@ class MemeticAlgorithm:
                 new_child2 = nx.astar_path(self.graph, new_node, individual[idx + 1], weight="length")
                 individual[idx:idx + 1] = new_child1 + new_child2[1:-1]
         # print("Mutated")
-        self.fitness(individual)
+        # self.fitness(individual)
         return individual
 
     def local_search(self, individual):
         best_fitness = self.fitness(individual)
-        # print(f"Fitness complete")
         best_route = individual
         for i in range(len(individual) - 1):
             for neighbor in self.graph.neighbors(individual[i]):
                 if neighbor not in individual:
+                    print(f"New Individual: {individual}")
+                    print(f"Neighbor: {neighbor}")
+                    new_child1 = nx.astar_path(self.graph, individual[i], neighbor, weight="length")
+                    new_child2 = nx.astar_path(self.graph, neighbor, individual[i+1], weight="length")
+                    print(f"New Child 1: {new_child1}")
+                    print(f"New Child 2: {new_child2}")
                     new_route = individual[:i + 1] + [neighbor] + individual[i + 1:]
+                    print(f"New Route: {new_route}")
                     new_fitness = self.fitness(new_route)
                     if new_fitness > best_fitness:
                         best_fitness = new_fitness
@@ -143,7 +179,7 @@ class MemeticAlgorithm:
         population = self.initialize_population()
         for generation in range(self.generations):
             print(f"Generation {generation + 1}")
-            print(f"Population Size: {len(population)}")
+            # print(f"Population Size: {len(population)}")
             new_population = []
             for _ in range(self.population_size // 2):
                 # print(f"Selection")
@@ -160,34 +196,33 @@ class MemeticAlgorithm:
                 # print(f"Local Search")
                 # child = self.local_search(child)
                 # print(f"Search complete")
+                # ox.plot_graph_route(self.graph, child)
                 new_population.extend([child, parent1])
             population = sorted(new_population, key=self.fitness, reverse=True)[:self.population_size]
+            # ox.plot_graph_route(self.graph, population[0])
         # for individual in population:
         #     ox.plot_graph_route(self.graph, individual)
         best_individual = max(population, key=self.fitness)
+        print(f"Distance: {self.route_distance(best_individual)}")
         return best_individual
     
-def funny():
+def generate_route():
     G = ox.graph_from_point((53.36486137451511, -1.8160056925378616), dist=8000, network_type='walk', dist_type="network")
     G = ox.distance.add_edge_lengths(G)
 
 
     start_node = ox.nearest_nodes(G, X=-1.8160056925378616, Y=53.36486137451511)
-
-    print(f"Start node information: {G[start_node]}")
+    end_node = ox.nearest_nodes(G, Y=53.34344386440596, X=-1.778107050662822)
 
 
     # Initialize and run the memetic algorithm
-    print("Running memetic algorithm...")
-    memetic_algo = MemeticAlgorithm(graph=G, start_node=start_node, target_distance=10000)
-    print("Evolving...")
+    memetic_algo = MemeticAlgorithm(graph=G, start_node=start_node, end_node=end_node, target_distance=10000)
     route = memetic_algo.evolve()
 
     #Convert route to coordinates
     coords = []
     for node in route:
         coords.append((G.nodes[node]['y'], G.nodes[node]['x']))
-    print(coords)
 
     return coords
 
@@ -200,13 +235,12 @@ if __name__ == "__main__":
 
 
     start_node = ox.nearest_nodes(G, X=-1.8160056925378616, Y=53.36486137451511)
-
-    print(f"Start node information: {G[start_node]}")
+    end_node = ox.nearest_nodes(G, Y=53.34344386440596, X=-1.778107050662822)
 
 
     # Initialize and run the memetic algorithm
     print("Running memetic algorithm...")
-    memetic_algo = MemeticAlgorithm(graph=G, start_node=start_node, target_distance=10000)
+    memetic_algo = MemeticAlgorithm(graph=G, start_node=start_node, end_node=end_node, target_distance=10000)
     print("Evolving...")
     best_route = memetic_algo.evolve()
 

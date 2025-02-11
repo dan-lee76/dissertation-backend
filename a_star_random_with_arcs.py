@@ -184,17 +184,11 @@ def astar_path(G, source, target, route1, heuristic=None, weight="weight", *, cu
 
     G_succ = G._adj  # For speed-up (and works for both directed and undirected graphs)
 
-    # The queue stores priority, node, cost to reach, and parent.
-    # Uses Python heapq to keep in priority order.
-    # Add a counter to the queue to prevent the underlying heap from
-    # attempting to compare the nodes themselves. The hash breaks ties in the
-    # priority and is guaranteed unique for all nodes in the graph.
+
     c = count()
     queue = [(0, next(c), source, 0, None)]
 
-    # Maps enqueued nodes to distance of discovered paths and the
-    # computed heuristics to target. We avoid computing the heuristics
-    # more than once and inserting the node into the queue too many times.
+
     enqueued = {}
     # Maps explored nodes to parent closest to the source.
     explored = {}
@@ -213,11 +207,9 @@ def astar_path(G, source, target, route1, heuristic=None, weight="weight", *, cu
             return path
 
         if curnode in explored:
-            # Do not override the parent of starting node
             if explored[curnode] is None:
                 continue
 
-            # Skip bad paths that were enqueued before finding a better one
             qcost, h = enqueued[curnode]
             if qcost < dist:
                 continue
@@ -234,10 +226,7 @@ def astar_path(G, source, target, route1, heuristic=None, weight="weight", *, cu
             ncost = dist + cost
             if neighbor in enqueued:
                 qcost, h = enqueued[neighbor]
-                # if qcost <= ncost, a less costly path from the
-                # neighbor to the source was already determined.
-                # Therefore, we won't attempt to push this neighbor
-                # to the queue
+
                 if qcost <= ncost:
                     continue
             else:
@@ -254,15 +243,19 @@ def astar_path(G, source, target, route1, heuristic=None, weight="weight", *, cu
 def route_to_coords(route):
     return [(G.nodes[node]['y'], G.nodes[node]['x']) for node in route]
 
-def a_star_assisted(G, start_node, end_node, route1, route2, heuristic=None, weight="weight", *, cutoff=None):
+def a_star_assisted():
+    start_node = ox.nearest_nodes(G, X=-1.8160056925378616, Y=53.36486137451511)
+    end_node = ox.nearest_nodes(G, Y=53.34344386440596, X=-1.778107050662822)
     n = ox.distance.nearest_nodes(G, Y=53.383737141983225, X=-1.848105996648731)
     n2 = ox.distance.nearest_nodes(G, Y=53.35339694450694, X=-1.8666549539010102)
+    t=time.time()
     route1 = nx.astar_path(G, start_node, n, weight='length')
     route3 = astar_path(G, n, n2, route1, weight='length')
     route4 = astar_path(G, n2, end_node, route1, weight='length')
     merged_route = merge_route(route1, route3)
     merged_route = merge_route(merged_route, route4)
     distance = calculate_path_distance(G, merged_route) / 1000
+    print(time.time() - t)
     print(f"Distance: {distance}")
     # fig, ax = ox.plot_graph_route(G, merged_route, route_linewidth=6, node_size=0, bgcolor='k')
     return route_to_coords(merged_route)
@@ -310,7 +303,53 @@ def generate_route(target_distance, x1=-1.8160056925378616, y1=53.36486137451511
             break
     return route_to_coords(route)
 
-generate_route(10)
+class AStarArcs:
+    def __init__(self, distance, tolerance):
+        self.target_distance = distance
+        self.tolerance = tolerance
+        self.start_node = ox.nearest_nodes(G, X=-1.8160056925378616, Y=53.36486137451511)
+        self.end_node = ox.nearest_nodes(G, Y=53.34344386440596, X=-1.778107050662822)
+        self.coords = []
+
+
+    def main(self):
+        route = nx.astar_path(G, self.start_node, self.end_node, weight='length')
+        route_coords = [(G.nodes[node]['x'], G.nodes[node]['y']) for node in route]
+        route_line = LineString(route_coords)
+        buffer_distance = self.target_distance * 0.0025
+        route_buffer = route_line.buffer(buffer_distance, quad_segs=1)
+        gdf = gpd.GeoDataFrame({'geometry': [route_buffer]}, crs="EPSG:3857")
+        gdf.to_file("route_buffer.geojson", driver="GeoJSON")
+        random_polygon = gdf.sample(n=1).iloc[0].geometry
+
+        boundary = random_polygon.exterior
+        self.coords = list(boundary.coords)
+
+    def generate_new(self):
+        for node in self.coords:
+            point = Point(node)
+            # print(point)
+            converted_node = ox.distance.nearest_nodes(G, X=point.x, Y=point.y)
+            route1 = nx.astar_path(G, self.start_node, converted_node, weight='length')
+            try:
+                route3 = astar_path(G, converted_node, self.end_node, route1, weight='length')
+            except nx.NetworkXNoPath:
+                continue
+            merged_route = merge_route(route1, route3)
+            distance = calculate_path_distance(G, merged_route) / 1000
+            # print(f"Distance: {distance}")
+            if self.target_distance - self.tolerance < distance < self.target_distance + self.tolerance:
+                print(f"Distance Achieved: {distance}")
+                print(f"Time: {time.time() - t}")
+                route = merged_route
+                # fig, ax = ox.plot_graph_route(G, route1, route_linewidth=6, node_size=0, bgcolor='k')
+                # fig, ax = ox.plot_graph_route(G, route3, route_linewidth=6, node_size=0, bgcolor='k')
+                # fig, ax = ox.plot_graph_route(G, merged_route, route_linewidth=6, node_size=0, bgcolor='k')
+                self.coords.remove(node)
+                break
+        return route_to_coords(route)
+
+# generate_route(10)
 # for node in coords:
 #     point = Point(node)
 #     converted_node = ox.distance.nearest_nodes(G, X=point.y, Y=point.x)
