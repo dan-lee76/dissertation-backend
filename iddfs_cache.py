@@ -57,31 +57,35 @@ def iterative_dfs(G, start_node, end_node, cutoff, target_distance, tolerance):
                 stack.append((neighbor, new_path, depth + 1, cumulative_distance))
 
 
-distance_km = 15
-tollerance = 1
-
-print("Generating Route")
-t = time.time()
-print(time.time() - t)
 
 def iddfs_with_reuse(G, start_node, end_node, maxDepth, target_distance, tolerance):
     target_distance *= 1000
     tolerance *= 1000
 
-    for depth in range(1, maxDepth + 1):
+    for depth in range(30, maxDepth + 1):
         found = False
         print("Depth: ", depth)
         for path in iterative_dfs(G, start_node, end_node, depth, target_distance, tolerance):
             # ox.plot_graph_route(G, path, route_linewidth=6, node_size=0, bgcolor='k')
             distance = calculate_path_distance(G, path) / 1000
             # print(f"Distance: {distance}")
-            if 14.5 <= distance <= 14.5:
+            if target_distance - tolerance <= distance <= target_distance + tolerance:
                 print(f"Route Found at Depth {depth}\nDistance: {distance}")
                 fig, ax = ox.plot_graph_route(G, path, route_linewidth=6, node_size=0, bgcolor='k')
                 found = True
 
 
 
-iddfs_with_reuse(G, start_node, end_node, 50, 15, 1)
+# iddfs_with_reuse(G, start_node, end_node, 50, 15, 1)
+def route_to_coords(route):
+    return [(G.nodes[node]['y'], G.nodes[node]['x']) for node in route]
 
-print("done")
+def generate_iddfs_route(distance):
+    route = iddfs_with_reuse(G, start_node, end_node, 50, distance, 1)
+    return route_to_coords(route)
+
+if __name__ == "__main__":
+    route = iddfs_with_reuse(G, start_node, end_node, 50, 10, 1)
+    ox.plot_graph_route(G, route, route_linewidth=6, node_size=0, bgcolor='k')
+    print("done")
+# print("done")

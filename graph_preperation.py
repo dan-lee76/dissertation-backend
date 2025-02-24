@@ -1,4 +1,5 @@
 import json
+import math
 import time
 import osmnx as ox
 import networkx as nx
@@ -8,19 +9,25 @@ import geopandas as gpd
 from matplotlib import pyplot as plt
 import requests
 from shapely.geometry import Point
+import folium
+from folium.plugins import HeatMap
 
 
 class Graph_Builder:
     def __init__(self, start_node, end_node, target_distance=10000):
         self.target_distance = target_distance
-        self.distance = 5000
+        self.distance = target_distance * 0.55
         self.start_point = start_node
-        self.G = ox.graph_from_point(start_node, dist=5000, network_type='walk', simplify=True)
+        self.G = ox.graph_from_point(start_node, dist=self.distance, network_type='walk', simplify=True)
+        print(f"Node Amount: {len(self.G.nodes)}")
+        print(f"Edge Amount: {len(self.G.edges)}")
         self.start_node = ox.nearest_nodes(self.G, X=start_node[1], Y=start_node[0])
         self.end_node = ox.nearest_nodes(self.G, Y=end_node[0], X=end_node[1])
+        self.bbox = ox.utils_geo.bbox_from_point(self.start_point, dist=self.distance)
         t=time.time()
         ox.settings.elevation_url_template = ("https://api.opentopodata.org/v1/eudem25m?locations={locations}")
         self.G = ox.add_node_elevations_google(self.G, batch_size=100, pause=1)
+        self.G = ox.distance.add_edge_lengths(self.G)
         self.G = ox.add_edge_grades(self.G)
 
         grades = pd.Series([d["grade_abs"] for _, _, d in ox.convert.to_undirected(self.G).edges(data=True)])
@@ -32,37 +39,110 @@ class Graph_Builder:
         # ec = ox.plot.get_edge_colors_by_attr(self.G, "grade_abs", cmap="plasma", num_bins=5, equal_size=True)
         # fig, ax = ox.plot.plot_graph(self.G, edge_color=ec, edge_linewidth=0.5, node_size=0, bgcolor="k")
         self.green_spaces_shape = self.green_spaces()
+        self.add_green_score()
         self.get_peaks()
+        self.add_distance_score()
+        # self.view_distance_score()
+
         # self.view_peaks()
 
 
-        self.add_green_score()
+        # self.view_green()
 
-        # node_colors = []
-        # for node in self.G.nodes:
-        #     if "green_score" in self.G.nodes[node] and self.G.nodes[node]["green_score"]:
-        #         node_colors.append("green")
-        #     else:
-        #         node_colors.append("none")
-        # fig, ax = ox.plot_graph(self.G, node_color=node_colors, node_size=10)
+        self.add_combined_fitness()
+        self.add_edge_gradient()
+        # nc = ox.plot.get_node_colors_by_attr(self.G, "fitness", cmap="hot")
+        # fig, ax = ox.plot.plot_graph(self.G, node_color=nc, node_size=5, edge_color="#333333", bgcolor="k")
 
-
-        self.extend_nodes()
         print(time.time()-t)
+        # ec = ox.plot.get_edge_colors_by_attr(self.G, "fitness", cmap="plasma", num_bins=5, equal_size=False)
+        # fig, ax = ox.plot.plot_graph(self.G, edge_color=ec, edge_linewidth=0.5, node_size=0, bgcolor="k")
+        # route1 = self.shortest_path_with_trip_distance()
+        # self.print_route_stats(route1)
+        # route2 = self.shortest_path_with_trip_impedance()
+        # self.print_route_stats(route2)
+        # route3 = self.shortest_path_with_trip_fitness()
+        # self.print_route_stats(route3)
+        # route4 = self.shortest_k_path_with_trip_fitness()
+        # self.generate_fitness_heatmap()
+        # self.generate_folium_map_with_layers()
 
-        print(self.G[self.start_node])
+    def generate_folium_map_with_layers(self):
+        # Create a Folium map centered at the start node
+        map_center = self.start_point
+        folium_map = folium.Map(location=map_center, zoom_start=14, tiles="OpenTopoMap")
+
+        # Layer 1: Fitness Heatmap
+        fitness_data = []
+        for node, data in self.G.nodes(data=True):
+            if "fitness" in data:
+                fitness_value = data["fitness"]
+                fitness_data.append([data['y'], data['x'], fitness_value])
+
+        # Normalize fitness values (optional)
+        fitness_values = [data[2] for data in fitness_data]
+        max_fitness = max(fitness_values) if fitness_values else 1
+        if max_fitness > 0:
+            fitness_data = [[data[0], data[1], data[2] / max_fitness] for data in fitness_data]
+
+        fitness_heatmap = HeatMap(fitness_data, name="Fitness Heatmap", show=False)
+        fitness_heatmap.add_to(folium_map)
+
+        # Layer 2: Peaks (nature == "peak")
+        peak_data = []
+        for node, data in self.G.nodes(data=True):
+            if "nature" in data and data["nature"].get("natural") == "peak":
+                peak_data.append([data['y'], data['x'], 1])  # Use a constant value for peaks
+
+        peak_heatmap = HeatMap(peak_data, name="Peaks", show=False)
+        peak_heatmap.add_to(folium_map)
+
+        # Layer 3: Green Score
+        green_data = []
+        for node, data in self.G.nodes(data=True):
+            if "green_score" in data:
+                green_value = data["green_score"]
+                green_data.append([data['y'], data['x'], green_value])
+
+        # Normalize green scores (optional)
+        green_values = [data[2] for data in green_data]
+        max_green = max(green_values) if green_values else 1
+        if max_green > 0:
+            green_data = [[data[0], data[1], data[2] / max_green] for data in green_data]
+
+        green_heatmap = HeatMap(green_data, name="Green Score", show=False)
+        green_heatmap.add_to(folium_map)
+
+        # Layer 4: Distance
+        distance_data = []
+        for node, data in self.G.nodes(data=True):
+            if "distance_score" in data:
+                distance_data.append([data['y'], data['x'], data["distance_score"]])
+
+        distance_heatmap = HeatMap(distance_data, name="Distance Score", show=False)
+        distance_heatmap.add_to(folium_map)
+
+        # Add layer control to toggle layers
+        folium.LayerControl().add_to(folium_map)
+
+        # Save the map to an HTML file or display it
+        folium_map.save("folium_map_with_layers_with_distance.html")
+        return folium_map
 
 
-        route0 = self.shortest_path_with_elevation_favor_and_target_distance()
-        self.print_route_stats(route0)
-        route1 = self.shortest_path_with_trip_distance()
-        self.print_route_stats(route1)
-        route2 = self.shortest_path_with_trip_impedance()
-        self.print_route_stats(route2)
+    def add_combined_fitness(self):
+        for n, data in self.G.nodes(data=True):
+            # data["fitness"] = data["green_score"] +
+            if "nature" in self.G.nodes[n] and self.G.nodes[n]["nature"].get("natural") == "peak":
+                data["fitness"] = abs(((data["green_score"] * data["elevation"]) * 2))
+            else:
+                data["fitness"] = abs(((data["green_score"] * data["elevation"]) * 1))
+            # if data["fitness"] == 0:
+            #     data["fitness"] = 999999
 
     def get_peaks(self):
         tags = {"natural": "peak"}
-        features = ox.features_from_place("Peak District, United Kingdom", tags)
+        features = ox.features_from_bbox(bbox=self.bbox, tags=tags)
         feature_points = features.representative_point()
         nn = ox.distance.nearest_nodes(self.G, feature_points.x, feature_points.y)
         useful_tags = ["name", "ele", "natural"]
@@ -77,23 +157,58 @@ class Graph_Builder:
                 node_colors.append("red")  # Color for peak nodes
             else:
                 node_colors.append("none")  # Color for other nodes
-
         fig, ax = ox.plot_graph(self.G, node_color=node_colors, node_size=10)
 
+    def view_green(self):
+        node_colors = []
+        for node in self.G.nodes:
+            if "green_score" in self.G.nodes[node] and self.G.nodes[node]["green_score"]:
+                node_colors.append("green")
+            else:
+                node_colors.append("none")
+        fig, ax = ox.plot_graph(self.G, node_color=node_colors, node_size=10)
+
+    def add_distance_score(self):
+        # Get the coordinates of the end_node
+        end_node_coords = (self.G.nodes[self.end_node]['y'], self.G.nodes[self.end_node]['x'])
+
+        # Calculate distances and store them in a list
+        distances = []
+        for node, data in self.G.nodes(data=True):
+            node_coords = (data['y'], data['x'])
+            distance = math.sqrt((node_coords[0] - end_node_coords[0]) ** 2 +
+                                 (node_coords[1] - end_node_coords[1]) ** 2)
+            distances.append((node, distance))
+
+        # Find the maximum and minimum distances for normalization
+        max_distance = max(distances, key=lambda x: x[1])[1]
+        min_distance = min(distances, key=lambda x: x[1])[1]
+
+        # Normalize distances and assign distance_score
+        for node, distance in distances:
+            if max_distance == min_distance:
+                # If all distances are the same, assign a default score (e.g., 1)
+                self.G.nodes[node]['distance_score'] = 1.0
+            else:
+                # Normalize to a range of 0 to 1 (higher score for closer nodes)
+                self.G.nodes[node]['distance_score'] = 1 - ((distance - min_distance) / (max_distance - min_distance))
+
+    def view_distance_score(self):
+        # Get the distance scores
+        distance_scores = [data['distance_score'] for _, data in self.G.nodes(data=True)]
+
+        # Plot the graph with node colors based on distance scores
+        fig, ax = ox.plot_graph(self.G, node_color=distance_scores, node_size=10, edge_linewidth=0.5, edge_color='gray')
 
     def green_spaces(self):
         url = "https://services.arcgis.com/JJzESW51TqeY9uat/arcgis/rest/services/CRoW_Act_2000_Access_Layer/FeatureServer/0/query"
 
-        bbox = ox.utils_geo.bbox_from_point(self.start_point, dist=self.distance)
-
-
-        print(bbox)
         params = {
             "where": "1=1",  # Adjust this to filter data if needed
             "outFields": "Descrip",  # Include all fields
             "outSR": "4326",  # Output spatial reference (WGS84)
             "f": "geojson",  # Output format
-            "geometry": f"{bbox[3]},{bbox[1]},{bbox[2]},{bbox[0]}",  # Bounding box
+            "geometry": f"{self.bbox[3]},{self.bbox[1]},{self.bbox[2]},{self.bbox[0]}",  # Bounding box
             "geometryType": "esriGeometryEnvelope",  # Bounding box geometry type
             "inSR": "4326",  # Input spatial reference (WGS84)
             "spatialRel": "esriSpatialRelIntersects"  # Spatial relationship (intersects)
@@ -107,55 +222,27 @@ class Graph_Builder:
 
         # Ensure the CRS is set to WGS84 (EPSG:4326)
         gdf.set_crs(epsg=4326, inplace=True)
-        print(gdf.head())
 
         return gdf
 
-    def impedance_distance(self, length, grade, total_distance):
-        # Reward higher elevations
-        elevation_gain = abs(grade * length)  # Elevation gain is the absolute rise
-        elevation_reward = 1 / (1 + elevation_gain)  # Higher elevation gain reduces impedance
-
-        # Penalize deviations from the target distance
-        distance_penalty = abs(total_distance - self.target_distance) / self.target_distance
-
-        # Combine elevation reward and distance penalty
-        return length * (elevation_reward + distance_penalty)
-
-    def shortest_path_with_elevation_favor_and_target_distance(self):
-        # Create a custom weight that rewards higher elevations and penalizes deviations from the target distance
-        for u, v, k, data in self.G.edges(keys=True, data=True):
-            # Calculate the cumulative distance up to this edge
-            cumulative_distance = nx.shortest_path_length(self.G, source=self.start_node, target=u, weight="length") + \
-                                  data["length"]
-            data["elevation_favor_distance"] = self.impedance_distance(data["length"], data["grade_abs"], cumulative_distance)
-
-        # Find the shortest path based on the custom weight
-        route_by_elevation_favor_distance = ox.routing.shortest_path(self.G, self.start_node, self.end_node,
-                                                                     weight="elevation_favor_distance")
-
-        # Plot the route
-        ec = ox.plot.get_edge_colors_by_attr(self.G, "grade_abs", cmap="plasma", num_bins=5, equal_size=True)
-        fig, ax = ox.plot.plot_graph_route(self.G, route_by_elevation_favor_distance, node_size=0, edge_color=ec)
-
-        return route_by_elevation_favor_distance
-
-    # def add_elevation(self):
-    def impedance(self, length, grade):
-        penalty = grade ** 2
-        return length * penalty
-
     def add_green_score(self):
+        # Adds a green score to each node based on the amount of neighboring green spaces
         for n, data in self.G.nodes(data=True):
-            # print(self.green_spaces_shape.intersects(Point(data["x"], data["y"])).any())
-            data["green_score"] = self.green_spaces_shape.intersects(Point(data["x"], data["y"])).any()
+            data["green_score"] = sum(self.green_spaces_shape.intersects(Point(self.G.nodes[x]["x"], self.G.nodes[x]["y"])).any() for x in self.G.neighbors(n))
 
-    def extend_nodes(self):
+    def get_route_fitness(self, route):
+        return sum(self.G.nodes[n]["fitness"] for n in route)
+
+
+    def add_edge_gradient(self):
+        def impedance(length, grade):
+            penalty = grade ** 2
+            return length * penalty
+
         for n1, n2, _, data in self.G.edges(keys=True, data=True):
-            data["impedance"] = self.impedance(data["length"], data["grade_abs"])
+            data["impedance"] = impedance(data["length"], data["grade_abs"])
             data["rise"] = data["length"] * data["grade"]
-            # data["greenary"] = self.green_spaces_shape.intersects(data).any()
-            # print(self.green_spaces_shape.intersects(data).any())
+            data["fitness"] = (self.G.nodes[n1]["fitness"] + self.G.nodes[n2]["fitness"])
 
     def shortest_path_with_trip_distance(self):
         route_by_length = ox.routing.shortest_path(self.G, self.start_node, self.end_node, weight="length")
@@ -167,6 +254,34 @@ class Graph_Builder:
         ec = ox.plot.get_edge_colors_by_attr(self.G, "grade_abs", cmap="plasma", num_bins=5, equal_size=True)
         fig, ax = ox.plot.plot_graph_route(self.G, route_by_impedance, node_size=0, edge_color=ec)
         return route_by_impedance
+
+    def shortest_path_with_trip_fitness(self):
+        route_by_fitness = ox.routing.shortest_path(self.G, self.start_node, self.end_node, weight="fitness")
+        ec = ox.plot.get_edge_colors_by_attr(self.G, "fitness", cmap="plasma")
+        # nc = ox.plot.get_node_colors_by_attr(self.G, "fitness", cmap="hot")
+        fig, ax = ox.plot_graph(self.G, node_size=0, edge_color=ec)
+        fig, ax = ox.plot.plot_graph_route(self.G, route_by_fitness, node_size=0, edge_color=ec)
+        return route_by_fitness
+
+    def shortest_k_path_with_trip_fitness(self):
+        route_by_fitness = ox.routing.k_shortest_paths(self.G, self.start_node, self.end_node, weight="fitness", k=1000)
+        for x in route_by_fitness:
+            # ec = ox.plot.get_edge_colors_by_attr(self.G, "fitness", cmap="plasma")
+            # fig, ax = ox.plot.plot_graph_route(self.G, x, node_size=0, edge_color=ec)
+            if self.calculate_path_distance(x) >= 9000:
+                ec = ox.plot.get_edge_colors_by_attr(self.G, "fitness", cmap="plasma")
+                fig, ax = ox.plot.plot_graph_route(self.G, x, node_size=0, edge_color=ec)
+        # ec = ox.plot.get_edge_colors_by_attr(self.G, "fitness", cmap="plasma")
+        # # nc = ox.plot.get_node_colors_by_attr(self.G, "fitness", cmap="hot")
+        # fig, ax = ox.plot_graph(self.G, node_size=0, edge_color=ec)
+        # fig, ax = ox.plot.plot_graph_route(self.G, route_by_fitness, node_size=0, edge_color=ec)
+        return route_by_fitness
+
+    def calculate_path_distance(self, route):
+        x = []
+        for u, v in zip(route[:-1], route[1:]):
+            x.append(self.G[u][v][0]['length'])
+        return sum(x)
 
     def print_route_stats(self, route):
         route_grades = ox.routing.route_to_gdf(self.G, route, weight="grade_abs")["grade_abs"]
@@ -182,22 +297,42 @@ class Graph_Builder:
         route_lengths = ox.routing.route_to_gdf(self.G, route, weight="length")["length"]
         print(f"Total trip distance: {np.sum(route_lengths):,.0f} meters")
 
+    def get_graph(self):
+        return self.G
 
-class GreenSpaces:
-    def __init__(self):
-        self.G = ox.graph_from_point((53.36486137451511, -1.8160056925378616), dist=5000, network_type='walk',
-                                     simplify=True)
-        self.file_path = "data/opgrsp_gb.gpkg"
-        print("Reading Green Spaces")
-        self.green_spaces = gpd.read_file(self.file_path)
-        print(self.green_spaces.head())
-        print(self.green_spaces.columns)
-        self.geometry = self.green_spaces.geometry.to_list()
-        # gdf = gpd.GeoDataFrame(self.green_spaces, geometry=self.geometry, crs="EPSG:3857")
-        # gdf.to_file("data/green_spaces.geojson", driver="GeoJSON")
-        fig, ax = ox.plot_graph(self.G, show=False, close=False, edge_color="gray")
-        self.geometry.plot(ax=ax, color="green", alpha=0.5)
-        plt.show()
+    def get_peak_nodes(self, route):
+        peaks = []
+        for node in route:
+            if "nature" in self.G.nodes[node] and self.G.nodes[node]["nature"].get("natural") == "peak":
+                peaks.append(node)
+        return peaks
+
+    def is_peak(self, node):
+        if "nature" in self.G.nodes[node] and self.G.nodes[node]["nature"].get("natural") == "peak":
+            return True
+        return False
+
+    def get_route_distance(self, route):
+        distance = 0
+        for i in range(len(route) - 1):
+            distance += self.G.edges[route[i], route[i + 1], 0]['length']
+        return distance
+
+    def get_route_assent(self, route):
+        assent = 0
+        for i in range(len(route) - 1):
+            rise = self.G.edges[route[i], route[i + 1], 0]['rise']
+            if rise > 0:
+                assent += rise
+        return assent
+
+    def get_route_descent(self, route):
+        descent = 0
+        for i in range(len(route) - 1):
+            rise = self.G.edges[route[i], route[i + 1], 0]['rise']
+            if rise < 0:
+                descent += rise
+        return descent
 
 
 if __name__ == "__main__":

@@ -1,6 +1,9 @@
 import heapq
 import random
 import time
+
+from graph_preperation import Graph_Builder
+
 t= time.time()
 import networkx as nx
 import osmnx as ox
@@ -249,6 +252,57 @@ def get_all_paths_bidirectional(G, start_node, end_node, cutoff=25, target_dista
                             new_visited
                         ))
 
+
+def get_all_paths_fitness(G, start_node, end_node, cutoff=25, target_distance=10, tolerance=1):
+    target_distance *= 1000
+    tolerance *= 1000
+    edge_lengths = {}
+    for u, v, data in G.edges(data=True):
+        edge_lengths.setdefault(u, {})[v] = data['length']
+
+    # Initialize stack with sorted successors by fitness in descending order
+    start_successors = sorted(G.successors(start_node),
+                          key=lambda v: G[start_node][v][0]['fitness'], reverse=True)
+    stack = [(start_node, iter(start_successors), None, 0, 0, 0)]
+    path = [start_node]
+    visited = {start_node}
+    while stack:
+        current_node, neighbors, prev_node, depth, cumulative, cum_fitness = stack[-1]
+        try:
+            neighbor = next(neighbors)
+        except StopIteration:
+            # Backtrack: remove current node from path and visited
+            stack.pop()
+            if path:
+                removed = path.pop()
+                visited.remove(removed)
+        else:
+            if neighbor in visited:
+                continue
+
+            new_cumulative = cumulative
+            new_fitness = cum_fitness
+            if len(path) >= 1:
+                new_cumulative += G[current_node][neighbor][0]['length']
+                new_fitness += G[current_node][neighbor][0]['fitness']
+
+            visited.add(neighbor)
+            path.append(neighbor)
+            if depth >= cutoff or new_cumulative > target_distance + tolerance:
+                path.pop()
+                visited.remove(neighbor)
+                continue
+
+            if neighbor == end_node:
+                if target_distance - tolerance <= new_cumulative <= target_distance + tolerance:
+                    yield list(path)
+
+            # Sort the next node's successors by fitness before adding to stack
+            neighbor_successors = sorted(G.successors(neighbor),
+                                   key=lambda v: G[neighbor][v][0]['fitness'], reverse=True)
+            stack.append((neighbor, iter(neighbor_successors), current_node, depth + 1, new_cumulative, new_fitness))
+
+
 def get_all_paths(G, start_node, end_node, cutoff = 25, target_distance = 10, tolerance = 1):
     target_distance *= 1000
     tolerance *= 1000
@@ -306,18 +360,23 @@ def process_graph_weightings(graph):
 
 class DFS_Generator:
     def __init__(self, distance_km, tolerance):
-        self.generator = get_all_paths_bidirectional(G, start_node, end_node, 50, target_distance=distance_km)
+        self.graph_builder = Graph_Builder((53.36486137451511, -1.8160056925378616), (53.34344386440596, -1.778107050662822))
+        self.G = self.graph_builder.get_graph()
+        self.generator = get_all_paths_bidirectional(self.G, start_node, end_node, 50, target_distance=distance_km)
         self.target_distance = distance_km
         self.tolerance = tolerance
+        print("setup done")
     
     def get_generated_route(self):
         t = time.time()
+        print("time to generate")
         for path in self.generator:
             distance = calculate_path_distance(G, path) / 1000
             if self.target_distance - self.tolerance <= distance <= self.target_distance + self.tolerance:
                 print(time.time() - t)
                 print(f"Route Found\nDistance: {distance}")
-                return path
+                ox.plot_graph_route(G, path, route_linewidth=6, node_size=0, bgcolor='k')
+                # return path
             
     def route_to_coords(self, route):
         return [(G.nodes[node]['y'], G.nodes[node]['x']) for node in route]
@@ -353,7 +412,9 @@ def generate_route(distance):
 
 if __name__ == "__main__":
     t = time.time()
-    route = dfs_gen(10)
+    # route = dfs_gen(10)
+    gen = DFS_Generator(10, 1)
+    route = gen.get_generated_route()
     print(time.time() - t)
     print(route)
     ox.plot_graph_route(G, route, route_linewidth=6, node_size=0, bgcolor='k')
