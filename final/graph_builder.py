@@ -1,5 +1,7 @@
 import math
 import time
+
+import osmnx
 import osmnx as ox
 import pandas as pd
 import numpy as np
@@ -10,13 +12,30 @@ from shapely.geometry import Point
 import folium
 from folium.plugins import HeatMap
 
+def surface_score(highway):
+    if highway in ["footway", "path", "steps", "pedestrian", "track", "bridleway", "cycleway", "service"]:
+        return 0.25
+    elif highway in ["residential", "living_street", "unclassified", "road"]:
+        return 1
+    elif highway in ["tertiary", "tertiary_link", "secondary", "secondary_link", "primary", "primary_link"]:
+        return 1.5
+    elif highway in ["trunk", "trunk_link", "motorway", "motorway_link"]:
+        return 2
+    else:
+        return 3
+
 
 class Graph_Builder:
-    def __init__(self, start_node, end_node, target_distance=10000, simplify=True):
+    def __init__(self, start_node, end_node, target_distance=10000, simplify=True, surface_score_function=surface_score):
         self.target_distance = target_distance
-        self.distance = target_distance * 0.55
+        self.distance = target_distance * 0.6
         self.start_point = start_node
-        self.G = ox.graph_from_point(start_node, dist=self.distance, network_type='walk', simplify=simplify)
+        self.G = ox.graph_from_point(start_node, dist=self.distance, network_type='walk', simplify=False)
+        self.add_surface_score_function = surface_score_function
+        if simplify:
+            print("Simplifying Graph...")
+            self.G = ox.simplify_graph(self.G, remove_rings=True)
+            self.remove_simplified_loops()
         print(f"Node Amount: {len(self.G.nodes)}")
         print(f"Edge Amount: {len(self.G.edges)}")
         print(f"Building Graph...")
@@ -24,6 +43,7 @@ class Graph_Builder:
         self.end_node = ox.nearest_nodes(self.G, Y=end_node[0], X=end_node[1])
         self.bbox = ox.utils_geo.bbox_from_point(self.start_point, dist=self.distance)
         t=time.time()
+
         ox.settings.elevation_url_template = ("https://api.opentopodata.org/v1/eudem25m?locations={locations}")
         self.G = ox.add_node_elevations_google(self.G, batch_size=100, pause=1)
         self.G = ox.distance.add_edge_lengths(self.G)
@@ -45,12 +65,42 @@ class Graph_Builder:
 
         self.add_combined_fitness()
         self.add_edge_gradient()
+        # print(f"NaNs: {self.nan}")
+        # print(f"NaN Edges: {self.nan_edge}")
+        # # Graph view of nan edges
+        # nc=[]
+        # for node in self.G.nodes:
+        #     if node in self.nan_edge:
+        #         print("Node in nan edge")
+        #         nc.append("red")
+        #     else:
+        #         nc.append("none")
+        # ox.plot_graph(self.G, node_color="red", node_size=10, edge_linewidth=0.5, edge_color='gray')
+        # fig, ax = ox.plot_graph(self.G, node_color=nc, node_size=10)
+
+        # osmnx.save_graphml(self.G, filepath="test_location.graphml")
+        ox.save_graphml(self.G, filepath="test_location_dragons.graphml")
+        self.view_surface_score()
+        self.view_peaks()
+
+        nc = ox.plot.get_node_colors_by_attr(self.G, "fitness", cmap="plasma", num_bins=5, equal_size=False)
+        fig, ax = ox.plot.plot_graph(self.G, node_color=nc, node_size=10, edge_linewidth=0.5, edge_color='gray')
+
         ec = ox.plot.get_edge_colors_by_attr(self.G, "fitness", cmap="plasma", num_bins=5, equal_size=False)
         fig, ax = ox.plot.plot_graph(self.G, edge_color=ec, edge_linewidth=0.5, node_size=0, bgcolor="k")
-        ox.plot_graph(self.G, node_color="green", node_size=10, edge_linewidth=0.5, edge_color='gray')
+        # ox.plot_graph(self.G, node_color="green", node_size=10, edge_linewidth=0.5, edge_color='gray')
         print(f"Graph Built in {time.time()-t}")
 
+        # Print max rise in graph
+        max_rise = max(data.get('rise', 0) for u, v, data in self.G.edges(data=True))
+
+        print(f"Maximum rise in the graph: {max_rise}")
+
+
         # self.generate_folium_map_with_layers()
+
+    def remove_simplified_loops(self):
+        self.G.remove_edges_from([(u, v, k) for u, v, k in self.G.edges(keys=True) if u == v])
 
     def generate_folium_map_with_layers(self):
         # Create a Folium map centered at the start node
@@ -119,10 +169,10 @@ class Graph_Builder:
         for n, data in self.G.nodes(data=True):
             # data["fitness"] = data["green_score"] +
             if "nature" in self.G.nodes[n] and self.G.nodes[n]["nature"].get("natural") == "peak":
-                # print((data["green_score"]  * data["elevation"] * data["distance_score"]) * 2)
-                data["fitness"] = abs(1000-((data["green_score"] * data["elevation"] * data["distance_score"]) * 2))
+                print(1000-((data["green_score"] * data["elevation"] * data["distance_score"]) * 2))
+                data["fitness"] = 1000-(data["green_score"] * data["distance_score"] * 2)
             else:
-                data["fitness"] = abs(1000-((data["green_score"] * data["elevation"] * data["distance_score"]) * 1))
+                data["fitness"] = 1000-(data["green_score"] * data["distance_score"] * 1)
             # if data["fitness"] == 0:
             #     data["fitness"] = 999999
 
@@ -186,6 +236,14 @@ class Graph_Builder:
         # Plot the graph with node colors based on distance scores
         fig, ax = ox.plot_graph(self.G, node_color=distance_scores, node_size=10, edge_linewidth=0.5, edge_color='gray')
 
+    def view_surface_score(self):
+        # Get the surface scores
+        surface_scores = [data['surface_score'] for _, _, data in self.G.edges(data=True)]
+
+        # Plot the graph with edge colors based on surface scores
+        ec = ox.plot.get_edge_colors_by_attr(self.G, "surface_score", cmap="plasma", num_bins=5, equal_size=False)
+        fig, ax = ox.plot.plot_graph(self.G, edge_color=ec, edge_linewidth=0.5, node_size=0, bgcolor="k")
+
     def green_spaces(self):
         url = "https://services.arcgis.com/JJzESW51TqeY9uat/arcgis/rest/services/CRoW_Act_2000_Access_Layer/FeatureServer/0/query"
 
@@ -219,17 +277,9 @@ class Graph_Builder:
     def get_route_fitness(self, route):
         return sum(self.G.nodes[n]["fitness"] for n in route)
 
-    def add_surface_score(self, highway):
-        if highway in ["footway", "path", "steps", "pedestrian", "track", "bridleway", "cycleway"]:
-            return 0.5
-        elif highway in ["residential", "living_street", "service", "unclassified", "road"]:
-            return 0.5
-        elif highway in ["tertiary", "tertiary_link", "secondary", "secondary_link", "primary", "primary_link"]:
-            return 1
-        elif highway in ["trunk", "trunk_link", "motorway", "motorway_link"]:
-            return 1.5
-        else:
-            return 2
+    def get_route_fitness_edges(self, route):
+        return sum(self.G.edges[u, v, 0]["fitness"] for u, v in zip(route[:-1], route[1:]))
+
 
     def add_edge_gradient(self):
         def impedance(length, grade):
@@ -239,16 +289,16 @@ class Graph_Builder:
         for n1, n2, _, data in self.G.edges(keys=True, data=True):
             data["impedance"] = impedance(data["length"], data["grade_abs"])
             data["rise"] = data["length"] * data["grade"]
-            data["surface_score"] = self.add_surface_score(data["highway"])
-            data["fitness"] = ((self.G.nodes[n1]["fitness"] + self.G.nodes[n2]["fitness"]))
-            # print(data["rise"])
-            # data["homing"] = data["fitness"] * data["rise"]
+
+            data["surface_score"] = self.add_surface_score_function(data["highway"])
+            data["fitness"] = data["length"] * self.G.nodes[n2]["fitness"] * data["surface_score"]
 
     def calculate_path_distance(self, route):
         x = []
         for u, v in zip(route[:-1], route[1:]):
             x.append(self.G[u][v][0]['length'])
         return sum(x)
+
 
     def get_graph(self):
         return self.G
@@ -305,9 +355,10 @@ class Graph_Builder:
         #     print(f"Rise: {rise}, Rise2: {self.G[u][v][0]['rise']}")
         return rise
 
+
 if __name__ == "__main__":
     start_node = (53.36486137451511, -1.8160056925378616)
     end_node = (53.34344386440596, -1.778107050662822)
-    gb = Graph_Builder(start_node, end_node)
+    gb = Graph_Builder(start_node, end_node, simplify=False)
     # gs = GreenSpaces()
     print("Done")
