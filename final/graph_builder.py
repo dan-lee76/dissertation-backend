@@ -12,7 +12,7 @@ from shapely.geometry import Point
 import folium
 from folium.plugins import HeatMap
 
-def surface_score(highway):
+def highway_score(highway):
     if highway in ["footway", "path", "steps", "pedestrian", "track", "bridleway", "cycleway", "service"]:
         return 0.25
     elif highway in ["residential", "living_street", "unclassified", "road"]:
@@ -24,13 +24,18 @@ def surface_score(highway):
     else:
         return 3
 
+def surface_score(surface):
+    return 1
+
 
 class Graph_Builder:
-    def __init__(self, start_node, end_node, target_distance=10000, simplify=True, surface_score_function=surface_score):
+    def __init__(self, start_node, end_node, target_distance=10000, simplify=True, highway_score_function=highway_score, surface_score_function=surface_score):
         self.target_distance = target_distance
         self.distance = target_distance * 0.6
         self.start_point = start_node
+        print(f"Downloading Graph...")
         self.G = ox.graph_from_point(start_node, dist=self.distance, network_type='walk', simplify=False)
+        self.add_highway_score_function = highway_score_function
         self.add_surface_score_function = surface_score_function
         if simplify:
             print("Simplifying Graph...")
@@ -43,9 +48,9 @@ class Graph_Builder:
         self.end_node = ox.nearest_nodes(self.G, Y=end_node[0], X=end_node[1])
         self.bbox = ox.utils_geo.bbox_from_point(self.start_point, dist=self.distance)
         t=time.time()
-
+        print(f"\t- Adding Topo...")
         ox.settings.elevation_url_template = ("https://api.opentopodata.org/v1/eudem25m?locations={locations}")
-        self.G = ox.add_node_elevations_google(self.G, batch_size=100, pause=1)
+        self.G = ox.add_node_elevations_google(self.G, batch_size=90, pause=1)
         self.G = ox.distance.add_edge_lengths(self.G)
         self.G = ox.add_edge_grades(self.G)
 
@@ -53,8 +58,11 @@ class Graph_Builder:
         grades = grades.replace([np.inf, -np.inf], np.nan).dropna()
 
         self.green_spaces_shape = self.green_spaces()
+        print(f"\t- Adding Green...")
         self.add_green_score()
+        print(f"\t- Adding Peaks...")
         self.get_peaks()
+        print(f"\t- Adding Distance...")
         self.add_distance_score()
         # self.view_distance_score()
 
@@ -62,9 +70,12 @@ class Graph_Builder:
 
 
         # self.view_green()
-
+        print(f"\t- Adding Combined Fitness...")
         self.add_combined_fitness()
+        print(f"\t- Adding Edge Gradient...")
         self.add_edge_gradient()
+
+        self.view_peaks()
         # print(f"NaNs: {self.nan}")
         # print(f"NaN Edges: {self.nan_edge}")
         # # Graph view of nan edges
@@ -80,14 +91,14 @@ class Graph_Builder:
 
         # osmnx.save_graphml(self.G, filepath="test_location.graphml")
         ox.save_graphml(self.G, filepath="test_location_dragons.graphml")
-        self.view_surface_score()
-        self.view_peaks()
+        # self.view_surface_score()
+        # self.view_peaks()
 
         nc = ox.plot.get_node_colors_by_attr(self.G, "fitness", cmap="plasma", num_bins=5, equal_size=False)
         fig, ax = ox.plot.plot_graph(self.G, node_color=nc, node_size=10, edge_linewidth=0.5, edge_color='gray')
-
-        ec = ox.plot.get_edge_colors_by_attr(self.G, "fitness", cmap="plasma", num_bins=5, equal_size=False)
-        fig, ax = ox.plot.plot_graph(self.G, edge_color=ec, edge_linewidth=0.5, node_size=0, bgcolor="k")
+        #
+        # ec = ox.plot.get_edge_colors_by_attr(self.G, "fitness", cmap="plasma", num_bins=5, equal_size=False)
+        # fig, ax = ox.plot.plot_graph(self.G, edge_color=ec, edge_linewidth=0.5, node_size=0, bgcolor="k")
         # ox.plot_graph(self.G, node_color="green", node_size=10, edge_linewidth=0.5, edge_color='gray')
         print(f"Graph Built in {time.time()-t}")
 
@@ -169,7 +180,7 @@ class Graph_Builder:
         for n, data in self.G.nodes(data=True):
             # data["fitness"] = data["green_score"] +
             if "nature" in self.G.nodes[n] and self.G.nodes[n]["nature"].get("natural") == "peak":
-                print(1000-((data["green_score"] * data["elevation"] * data["distance_score"]) * 2))
+                # print(1000-((data["green_score"] * data["elevation"] * data["distance_score"]) * 2))
                 data["fitness"] = 1000-(data["green_score"] * data["distance_score"] * 2)
             else:
                 data["fitness"] = 1000-(data["green_score"] * data["distance_score"] * 1)
@@ -185,6 +196,13 @@ class Graph_Builder:
         for node, feature in zip(nn, features[useful_tags].to_dict(orient="records")):
             feature = {k: v for k, v in feature.items() if pd.notna(v)}
             self.G.nodes[node].update({"nature": feature})
+        features = ox.features_from_bbox(bbox=self.bbox, tags={"surface": True})
+        feature_points = features.representative_point()
+        nn = ox.distance.nearest_nodes(self.G, feature_points.x, feature_points.y)
+        useful_tags = ["access", "surface"]
+        for node, feature in zip(nn, features[useful_tags].to_dict(orient="records")):
+            feature = {k: v for k, v in feature.items() if pd.notna(v)}
+            self.G.nodes[node].update({"surface": feature})
 
     def view_peaks(self):
         node_colors = []
@@ -287,11 +305,31 @@ class Graph_Builder:
             return length * penalty
 
         for n1, n2, _, data in self.G.edges(keys=True, data=True):
+            # print(self.G.nodes[n2])
             data["impedance"] = impedance(data["length"], data["grade_abs"])
             data["rise"] = data["length"] * data["grade"]
+            data["highway_score"] = self.add_highway_score_function(data["highway"])
+            try:
+                if self.G.nodes[n2]["surface"]["access"] == 'private':
+                    data["access_score"] = 99
+                elif self.G.nodes[n2]["surface"]["access"] == "yes":
+                    data["access_score"] = 0.25
+                else:
+                    data["access_score"] = 1
+            except:
+                data["access_score"] = 2
+            try:
+                if self.G.nodes[n2]["surface"]:
+                    data["surface_score"] = self.add_surface_score_function(n2["surface"])
+            except:
+                data["surface_score"] = 10
+            # data["surface_score"] = self.add_surface_score_function(n2["surface"])
 
-            data["surface_score"] = self.add_surface_score_function(data["highway"])
-            data["fitness"] = data["length"] * self.G.nodes[n2]["fitness"] * data["surface_score"]
+            ## Accessible
+            # data["fitness"] = data["length"] * self.G.nodes[n2]["fitness"] * data["highway_score"] * data["impedance"] * data["surface_score"] * data["access_score"]
+
+            # Normal
+            data["fitness"] = data["length"] * self.G.nodes[n2]["fitness"] * data["highway_score"]
 
     def calculate_path_distance(self, route):
         x = []
