@@ -11,30 +11,50 @@ import requests
 from shapely.geometry import Point
 import folium
 from folium.plugins import HeatMap
+from geopy.distance import distance
+from shapely.geometry.linestring import LineString
+from pyrosm import OSM
+from pyrosm import get_data
 
 def highway_score(highway):
-    if highway in ["footway", "path", "steps", "pedestrian", "track", "bridleway", "cycleway", "service"]:
-        return 0.25
-    elif highway in ["residential", "living_street", "unclassified", "road"]:
-        return 1
-    elif highway in ["tertiary", "tertiary_link", "secondary", "secondary_link", "primary", "primary_link"]:
-        return 1.5
-    elif highway in ["trunk", "trunk_link", "motorway", "motorway_link"]:
-        return 2
+    if isinstance(highway, list):
+        total = 0
+        for h in highway:
+            total += highway_score(h)
+        return total/len(highway)
     else:
-        return 3
+        if highway in ["footway", "path", "steps", "pedestrian", "track", "bridleway", "cycleway", "service"]:
+            return 0.25
+        elif highway in ["residential", "living_street", "unclassified", "road"]:
+            return 1
+        elif highway in ["tertiary", "tertiary_link", "secondary", "secondary_link", "primary", "primary_link"]:
+            return 1.5
+        elif highway in ["trunk", "trunk_link", "motorway", "motorway_link"]:
+            return 2
+        else:
+            return 3
 
 def surface_score(surface):
     return 1
 
 
 class Graph_Builder:
-    def __init__(self, start_node, end_node, target_distance=10000, simplify=True, highway_score_function=highway_score, surface_score_function=surface_score):
+    def __init__(self, start_node, end_node, target_distance=10000, simplify=True, highway_score_function=highway_score, surface_score_function=surface_score, server=False):
         self.target_distance = target_distance
         self.distance = target_distance * 0.6
         self.start_point = start_node
         print(f"Downloading Graph...")
-        self.G = ox.graph_from_point(start_node, dist=self.distance, network_type='walk', simplify=False)
+        if server:
+            osm = OSM("derbyshire-latest.osm.pbf")
+            nodes, edges = osm.get_network(nodes=True, network_type="walking")
+            self.G = osm.to_graph(nodes, edges, graph_type="networkx")
+        else:
+            self.G = ox.graph_from_point(start_node, dist=self.distance, network_type='walk', simplify=False)
+
+        # osm = OSM("derbyshire-latest.osm.pbf")
+        # nodes, edges = osm.get_network(nodes=True, network_type="walking")
+        # self.G = osm.to_graph(nodes, edges, graph_type="networkx")
+
         self.add_highway_score_function = highway_score_function
         self.add_surface_score_function = surface_score_function
         if simplify:
@@ -50,7 +70,10 @@ class Graph_Builder:
         t=time.time()
         print(f"\t- Adding Topo...")
         ox.settings.elevation_url_template = ("https://api.opentopodata.org/v1/eudem25m?locations={locations}")
-        self.G = ox.add_node_elevations_google(self.G, batch_size=90, pause=1)
+        if server:
+            self.G = ox.add_node_elevations_raster(self.G, filepath="output_AW3D30.tif")
+        else:
+            self.G = ox.add_node_elevations_google(self.G, batch_size=90, pause=1)
         self.G = ox.distance.add_edge_lengths(self.G)
         self.G = ox.add_edge_grades(self.G)
 
@@ -61,9 +84,11 @@ class Graph_Builder:
         print(f"\t- Adding Green...")
         self.add_green_score()
         print(f"\t- Adding Peaks...")
-        self.get_peaks()
+        self.add_peaks_with_barrier_check()
         print(f"\t- Adding Distance...")
         self.add_distance_score()
+        print(f"\t- Adding Surface...")
+        self.add_surface()
         # self.view_distance_score()
 
         # self.view_peaks()
@@ -75,7 +100,11 @@ class Graph_Builder:
         print(f"\t- Adding Edge Gradient...")
         self.add_edge_gradient()
 
-        self.view_peaks()
+        # self.view_green()
+        # self.view_distance_score()
+        # self.view_peaks()
+        # self.view_highway_score()
+        # self.view_surface_score()
         # print(f"NaNs: {self.nan}")
         # print(f"NaN Edges: {self.nan_edge}")
         # # Graph view of nan edges
@@ -90,15 +119,40 @@ class Graph_Builder:
         # fig, ax = ox.plot_graph(self.G, node_color=nc, node_size=10)
 
         # osmnx.save_graphml(self.G, filepath="test_location.graphml")
-        ox.save_graphml(self.G, filepath="test_location_dragons.graphml")
+        # ox.save_graphml(self.G, filepath="test_location_dragons.graphml")
         # self.view_surface_score()
         # self.view_peaks()
 
-        nc = ox.plot.get_node_colors_by_attr(self.G, "fitness", cmap="plasma", num_bins=5, equal_size=False)
-        fig, ax = ox.plot.plot_graph(self.G, node_color=nc, node_size=10, edge_linewidth=0.5, edge_color='gray')
+        nc = ox.plot.get_node_colors_by_attr(self.G, "elevation", cmap="plasma", num_bins=5, equal_size=False)
+        fig, ax = ox.plot.plot_graph(self.G, node_color=nc, node_size=5, edge_linewidth=0.5, edge_color='gray')
         #
-        # ec = ox.plot.get_edge_colors_by_attr(self.G, "fitness", cmap="plasma", num_bins=5, equal_size=False)
-        # fig, ax = ox.plot.plot_graph(self.G, edge_color=ec, edge_linewidth=0.5, node_size=0, bgcolor="k")
+        ## plot highway type
+        # edge_col = []
+        # for edge in self.G.edges(data=True):
+        #     # print(edge)
+        #     if edge[2]["highway"] in ["footway"]:
+        #         edge_col.append("red")
+        #     elif edge[2]["highway"] in ["path"]:
+        #         edge_col.append("orange")
+        #     elif edge[2]["highway"] in ["steps"]:
+        #         edge_col.append("purple")
+        #     elif edge[2]["highway"] in ["pedestrian"]:
+        #         edge_col.append("cyan")
+        #     elif edge[2]["highway"] in ["residential", "living_street", "unclassified", "road"]:
+        #         edge_col.append("blue")
+        #     elif edge[2]["highway"] in ["tertiary", "tertiary_link", "secondary", "secondary_link", "primary", "primary_link"]:
+        #         edge_col.append("green")
+        #     elif edge[2]["highway"] in ["trunk", "trunk_link", "motorway", "motorway_link"]:
+        #         edge_col.append("yellow")
+        #     else:
+        #         edge_col.append("white")
+        # ox.plot_graph(self.G, edge_color=edge_col, edge_linewidth=0.5, node_size=0, bgcolor="k")
+
+
+
+        # ox.plot_graph(self.G, node_color="red", node_size=10, edge_linewidth=0.5, edge_color='gray')
+        ec = ox.plot.get_edge_colors_by_attr(self.G, "fitness", cmap="plasma", num_bins=5, equal_size=False)
+        fig, ax = ox.plot.plot_graph(self.G, edge_color=ec, edge_linewidth=0.5, node_size=0)
         # ox.plot_graph(self.G, node_color="green", node_size=10, edge_linewidth=0.5, edge_color='gray')
         print(f"Graph Built in {time.time()-t}")
 
@@ -181,28 +235,69 @@ class Graph_Builder:
             # data["fitness"] = data["green_score"] +
             if "nature" in self.G.nodes[n] and self.G.nodes[n]["nature"].get("natural") == "peak":
                 # print(1000-((data["green_score"] * data["elevation"] * data["distance_score"]) * 2))
-                data["fitness"] = 1000-(data["green_score"] * data["distance_score"] * 2)
+                data["fitness"] = 1/((data["green_score"] * data["distance_score"] * 2)+1)
             else:
-                data["fitness"] = 1000-(data["green_score"] * data["distance_score"] * 1)
+                data["fitness"] = 1/((data["green_score"] * data["distance_score"] * 1)+1)
             # if data["fitness"] == 0:
             #     data["fitness"] = 999999
 
-    def get_peaks(self):
+    def add_peaks(self):
         tags = {"natural": "peak"}
         features = ox.features_from_bbox(bbox=self.bbox, tags=tags)
         feature_points = features.representative_point()
         nn = ox.distance.nearest_nodes(self.G, feature_points.x, feature_points.y)
         useful_tags = ["name", "ele", "natural"]
         for node, feature in zip(nn, features[useful_tags].to_dict(orient="records")):
-            feature = {k: v for k, v in feature.items() if pd.notna(v)}
-            self.G.nodes[node].update({"nature": feature})
-        features = ox.features_from_bbox(bbox=self.bbox, tags={"surface": True})
+            if isinstance(feature["name"], str):
+                feature = {k: v for k, v in feature.items() if pd.notna(v)}
+                self.G.nodes[node].update({"nature": feature})
+
+    def add_peaks_within_distance(self):
+        tags = {"natural": "peak"}
+        features = ox.features_from_bbox(bbox=self.bbox, tags=tags)
         feature_points = features.representative_point()
         nn = ox.distance.nearest_nodes(self.G, feature_points.x, feature_points.y)
-        useful_tags = ["access", "surface"]
-        for node, feature in zip(nn, features[useful_tags].to_dict(orient="records")):
-            feature = {k: v for k, v in feature.items() if pd.notna(v)}
-            self.G.nodes[node].update({"surface": feature})
+        useful_tags = ["name", "ele", "natural"]
+        for node, point, feature in zip(nn, feature_points, features[useful_tags].to_dict(orient="records")):
+            if isinstance(feature["name"], str):
+                feature = {k: v for k, v in feature.items() if pd.notna(v)}
+                distance1 = self.calculate_euclidean_distance((self.G.nodes[node]['y'], self.G.nodes[node]['x']), (point.y, point.x))
+                print(feature,distance1)
+                if distance((self.G.nodes[node]['y'], self.G.nodes[node]['x']), (point.y, point.x)).m <= 500:
+                    self.G.nodes[node].update({"nature": feature})
+
+    def add_peaks_with_barrier_check(self):
+        tags = {"natural": "peak"}
+        features = ox.features_from_bbox(bbox=self.bbox, tags=tags)
+        feature_points = features.representative_point()
+        nn = ox.distance.nearest_nodes(self.G, feature_points.x, feature_points.y)
+        useful_tags = ["name", "ele", "natural"]
+        # Fetch barrier features
+        barrier_tags = {"barrier": True}
+        barriers = ox.features_from_bbox(bbox=self.bbox, tags=barrier_tags)
+        # Filter to line and polygon geometries
+        barrier_geoms = barriers[barriers.geometry.type.isin(['LineString', 'Polygon'])].geometry
+        # Create spatial index for efficiency
+        barrier_sindex = barrier_geoms.sindex if not barrier_geoms.empty else None
+        for node, point, feature in zip(nn, feature_points, features[useful_tags].to_dict(orient="records")):
+            if isinstance(feature["name"], str):
+                feature = {k: v for k, v in feature.items() if pd.notna(v)}
+                node_point = Point(self.G.nodes[node]['x'], self.G.nodes[node]['y'])
+                line = LineString([point, node_point])
+
+                intersects_any = False
+                if barrier_geoms.empty:
+                    intersects_any = False  # No barriers, proceed
+                else:
+                    # Use spatial index to find candidate barriers
+                    candidates = list(barrier_sindex.intersection(line.bounds))
+                    intersects_any = any(line.intersects(barrier_geoms.iloc[candidate])
+                                         for candidate in candidates)
+                # Attach peak if no barrier intersects
+                if not intersects_any:
+                    self.G.nodes[node].update({"nature": feature})
+
+
 
     def view_peaks(self):
         node_colors = []
@@ -212,6 +307,15 @@ class Graph_Builder:
             else:
                 node_colors.append("none")  # Color for other nodes
         fig, ax = ox.plot_graph(self.G, node_color=node_colors, node_size=10)
+
+    def add_surface(self):
+        features = ox.features_from_bbox(bbox=self.bbox, tags={"surface": True})
+        feature_points = features.representative_point()
+        nn = ox.distance.nearest_nodes(self.G, feature_points.x, feature_points.y)
+        useful_tags = ["access", "surface"]
+        for node, feature in zip(nn, features[useful_tags].to_dict(orient="records")):
+            feature = {k: v for k, v in feature.items() if pd.notna(v)}
+            self.G.nodes[node].update({"surface": feature})
 
     def view_green(self):
         node_colors = []
@@ -252,7 +356,7 @@ class Graph_Builder:
         distance_scores = [data['distance_score'] for _, data in self.G.nodes(data=True)]
 
         # Plot the graph with node colors based on distance scores
-        fig, ax = ox.plot_graph(self.G, node_color=distance_scores, node_size=10, edge_linewidth=0.5, edge_color='gray')
+        fig, ax = ox.plot_graph(self.G, node_color=distance_scores, node_size=10)
 
     def view_surface_score(self):
         # Get the surface scores
@@ -260,7 +364,15 @@ class Graph_Builder:
 
         # Plot the graph with edge colors based on surface scores
         ec = ox.plot.get_edge_colors_by_attr(self.G, "surface_score", cmap="plasma", num_bins=5, equal_size=False)
-        fig, ax = ox.plot.plot_graph(self.G, edge_color=ec, edge_linewidth=0.5, node_size=0, bgcolor="k")
+        fig, ax = ox.plot.plot_graph(self.G, edge_color=ec, edge_linewidth=0.5, node_size=0)
+
+    def view_highway_score(self):
+        # Get the surface scores
+        highway_scores = [data['highway_score'] for _, _, data in self.G.edges(data=True)]
+
+        # Plot the graph with edge colors based on surface scores
+        ec = ox.plot.get_edge_colors_by_attr(self.G, "highway_score", cmap="plasma", num_bins=5, equal_size=False)
+        fig, ax = ox.plot.plot_graph(self.G, edge_color=ec, edge_linewidth=0.5, node_size=0)
 
     def green_spaces(self):
         url = "https://services.arcgis.com/JJzESW51TqeY9uat/arcgis/rest/services/CRoW_Act_2000_Access_Layer/FeatureServer/0/query"
@@ -270,7 +382,7 @@ class Graph_Builder:
             "outFields": "Descrip",  # Include all fields
             "outSR": "4326",  # Output spatial reference (WGS84)
             "f": "geojson",  # Output format
-            "geometry": f"{self.bbox[3]},{self.bbox[1]},{self.bbox[2]},{self.bbox[0]}",  # Bounding box
+            "geometry": f"{self.bbox[0]},{self.bbox[1]},{self.bbox[2]},{self.bbox[3]}",  # Bounding box
             "geometryType": "esriGeometryEnvelope",  # Bounding box geometry type
             "inSR": "4326",  # Input spatial reference (WGS84)
             "spatialRel": "esriSpatialRelIntersects"  # Spatial relationship (intersects)
@@ -308,6 +420,7 @@ class Graph_Builder:
             # print(self.G.nodes[n2])
             data["impedance"] = impedance(data["length"], data["grade_abs"])
             data["rise"] = data["length"] * data["grade"]
+            # print(data, self.G.nodes[n2])
             data["highway_score"] = self.add_highway_score_function(data["highway"])
             try:
                 if self.G.nodes[n2]["surface"]["access"] == 'private':

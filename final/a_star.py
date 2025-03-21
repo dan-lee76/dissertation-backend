@@ -98,19 +98,8 @@ def astar_path(G, source, target, visited_nodes=None, heuristic=None, weight="we
 
 
 def astar_path_with_backtracking(G, source, target, visited_nodes=None, heuristic=None, weight="weight", cutoff=None,
-                                 backtrack_mode='iterative', percentage=None, max_backtracks=100):
-    """
-    Wrapper for A* with flexible backtracking options.
+                                 backtrack_mode='iterative', percentage=None, max_backtracks=100, target_distance=None, length_calc=None):
 
-    Parameters:
-    - backtrack_mode: 'fixed' (use percentage), 'iterative' (increase backtracks), or 'limit' (specific number)
-    - percentage: Backtracking percentage (e.g., 0.06 for 6%) if mode is 'fixed'
-    - max_backtracks: Maximum backtracks to try in iterative mode
-
-    Returns:
-    - path: List of nodes, or None if no path found
-    - backtracks: Number of backtracks in the path, or None
-    """
     if backtrack_mode == 'iterative':
         for k in range(max_backtracks + 1):
             try:
