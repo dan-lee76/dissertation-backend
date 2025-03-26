@@ -123,36 +123,17 @@ class Graph_Builder:
         # self.view_surface_score()
         # self.view_peaks()
 
-        nc = ox.plot.get_node_colors_by_attr(self.G, "elevation", cmap="plasma", num_bins=5, equal_size=False)
-        fig, ax = ox.plot.plot_graph(self.G, node_color=nc, node_size=5, edge_linewidth=0.5, edge_color='gray')
-        #
-        ## plot highway type
-        # edge_col = []
-        # for edge in self.G.edges(data=True):
-        #     # print(edge)
-        #     if edge[2]["highway"] in ["footway"]:
-        #         edge_col.append("red")
-        #     elif edge[2]["highway"] in ["path"]:
-        #         edge_col.append("orange")
-        #     elif edge[2]["highway"] in ["steps"]:
-        #         edge_col.append("purple")
-        #     elif edge[2]["highway"] in ["pedestrian"]:
-        #         edge_col.append("cyan")
-        #     elif edge[2]["highway"] in ["residential", "living_street", "unclassified", "road"]:
-        #         edge_col.append("blue")
-        #     elif edge[2]["highway"] in ["tertiary", "tertiary_link", "secondary", "secondary_link", "primary", "primary_link"]:
-        #         edge_col.append("green")
-        #     elif edge[2]["highway"] in ["trunk", "trunk_link", "motorway", "motorway_link"]:
-        #         edge_col.append("yellow")
-        #     else:
-        #         edge_col.append("white")
-        # ox.plot_graph(self.G, edge_color=edge_col, edge_linewidth=0.5, node_size=0, bgcolor="k")
+        # nc = ox.plot.get_node_colors_by_attr(self.G, "elevation", cmap="plasma", num_bins=5, equal_size=False)
+        # fig, ax = ox.plot.plot_graph(self.G, node_color=nc, node_size=5, edge_linewidth=0.5, edge_color='gray')
+
+        # ec = ox.plot.get_edge_colors_by_attr(self.G, "fitness", cmap="plasma", num_bins=10, equal_size=True)
+        # ox.plot_graph(self.G, edge_color=ec, edge_linewidth=0.75, node_size=0)
 
 
 
         # ox.plot_graph(self.G, node_color="red", node_size=10, edge_linewidth=0.5, edge_color='gray')
-        ec = ox.plot.get_edge_colors_by_attr(self.G, "fitness", cmap="plasma", num_bins=5, equal_size=False)
-        fig, ax = ox.plot.plot_graph(self.G, edge_color=ec, edge_linewidth=0.5, node_size=0)
+        # ec = ox.plot.get_edge_colors_by_attr(self.G, "fitness", cmap="plasma", num_bins=5, equal_size=False)
+        # fig, ax = ox.plot.plot_graph(self.G, edge_color=ec, edge_linewidth=0.5, node_size=0)
         # ox.plot_graph(self.G, node_color="green", node_size=10, edge_linewidth=0.5, edge_color='gray')
         print(f"Graph Built in {time.time()-t}")
 

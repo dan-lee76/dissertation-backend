@@ -177,6 +177,7 @@ class AStarArcs:
             def local_search(local_node, local_route):
                 # Step 3: Local search through nearby peaks
                 nearby_peaks = get_nearby_peaks(local_node, local_route)
+                print(nearby_peaks)
                 # node_colors = []
                 # for node1 in self.G.nodes:
                 #     if node1 == local_node:
@@ -188,41 +189,41 @@ class AStarArcs:
                 # fig, ax = ox.plot_graph(self.G, node_color=node_colors, node_size=10)
                 for nearby_node in nearby_peaks:
                     print(nearby_node)
-                    if nearby_node == 31624075:
-                        print("Fairfield Found")
-                        route1 = astar_path_with_backtracking(self.G, self.start_node, 30050955, weight='fitness', max_backtracks=15)[0]  # Using custom astar_path
-                        route2 = astar_path_with_backtracking(self.G, 30050955, 31624075, route1, weight='fitness', max_backtracks=15)[0]  # Using custom astar_path
-                        mroute = self.merge_route(route1, route2)
-                        route3 = astar_path_with_backtracking(self.G, 31624075, 30050713, mroute, weight='fitness', max_backtracks=15)[0]  # Using custom astar_path
-                        mroute = self.merge_route(mroute, route3)
-                        ox.plot_graph_route(self.G, mroute, route_linewidth=6, node_size=0, bgcolor='k')
-                        # ox.plot_graph_route(self.G, local_route, route_linewidth=6, node_size=0, bgcolor='k')
-                        # route2 = astar_path_with_backtracking(self.G, local_node, nearby_node, local_route,
-                        #                     weight='fitness', backtrack_mode="iterative", max_backtracks=15)[0]  # Using custom astar_path
-                        # partial_route = self.merge_route(local_route, route2)
-                        # ox.plot_graph_route(self.G, partial_route, route_linewidth=6, node_size=0, bgcolor='k')
-                        # print(f"Trying merge. Current peak amount: {len(self.graph_builder.get_peak_nodes(partial_route))}")
-                        # route3 = astar_path_with_backtracking(self.G, nearby_node, self.end_node, weight='fitness', visited_nodes=partial_route, backtrack_mode="iterative", max_backtracks=15)  # Using custom astar_path
-                        # print(f"Merge Complete, backtracks: {route3[1]}")
-                        # merged_route = self.merge_route(partial_route, route3[0])
-                        # ox.plot_graph_route(self.G, merged_route, route_linewidth=6, node_size=0, bgcolor='k')
-                        # distance = self.graph_builder.get_route_distance(merged_route) / 1000
-                        print(f"Back Tor Distance (via {nearby_node}): {distance}")
+                    # if local_node == 12595576692:
+                    #     print("Mamtor Found")
+                    #     # route1 = astar_path_with_backtracking(self.G, self.start_node, 30050955, weight='fitness', max_backtracks=15)[0]  # Using custom astar_path
+                    #     # route2 = astar_path_with_backtracking(self.G, 30050955, 31624075, route1, weight='fitness', max_backtracks=15)[0]  # Using custom astar_path
+                    #     # mroute = self.merge_route(route1, route2)
+                    #     # route3 = astar_path_with_backtracking(self.G, 31624075, 30050713, mroute, weight='fitness', max_backtracks=15)[0]  # Using custom astar_path
+                    #     # mroute = self.merge_route(mroute, route3)
+                    #     # ox.plot_graph_route(self.G, mroute, route_linewidth=6, node_size=0, bgcolor='k')
+                    #     ox.plot_graph_route(self.G, local_route, route_linewidth=6, node_size=0, bgcolor='k')
+                    #     route2 = astar_path_with_backtracking(self.G, local_node, nearby_node, local_route,
+                    #                         weight='fitness', backtrack_mode="iterative", max_backtracks=15)[0]  # Using custom astar_path
+                    #     partial_route = self.merge_route(local_route, route2)
+                    #     ox.plot_graph_route(self.G, partial_route, route_linewidth=6, node_size=0, bgcolor='k')
+                    #     print(f"Trying merge. Current peak amount: {len(self.graph_builder.get_peak_nodes(partial_route))}")
+                    #     route3 = astar_path_with_backtracking(self.G, nearby_node, self.end_node, weight='fitness', visited_nodes=partial_route, backtrack_mode="iterative", max_backtracks=15)  # Using custom astar_path
+                    #     print(f"Merge Complete, backtracks: {route3[1]}")
+                    #     merged_route = self.merge_route(partial_route, route3[0])
+                    #     ox.plot_graph_route(self.G, merged_route, route_linewidth=6, node_size=0, bgcolor='k')
+                    #     distance = self.graph_builder.get_route_distance(merged_route) / 1000
+                    #     print(f"Back Tor Distance (via {nearby_node}): {distance}")
                     try:
                         # Route from primary peak to nearby peak
-                        route2 = astar_path_with_backtracking(self.G, local_node, nearby_node, local_route, weight='fitness', max_backtracks=15)[0]  # Using custom astar_path
+                        route2 = astar_path_with_backtracking(self.G, local_node, nearby_node, local_route, weight='fitness', max_backtracks=5)[0]  # Using custom astar_path
                         partial_route = self.merge_route(local_route, route2)
 
                         # Route from nearby peak to end
                         try:
                             # print("Trying")
                             # ox.plot_graph_route(self.G, partial_route, route_linewidth=6, node_size=0, bgcolor='k')
-                            route3 = astar_path_with_backtracking(self.G, nearby_node, self.end_node, visited_nodes=partial_route, weight=descent_favoring_weight, max_backtracks=15)[0] # Using custom astar_path
+                            route3 = astar_path_with_backtracking(self.G, nearby_node, self.end_node, visited_nodes=partial_route, weight=descent_favoring_weight, max_backtracks=5)[0] # Using custom astar_path
                             # print("trying merge")
                             merged_route = self.merge_route(partial_route, route3)
                             # print("Merged")
                             distance = self.graph_builder.get_route_distance(merged_route) / 1000
-                            # print(f"Local Search Distance (via {nearby_node}): {distance}")
+                            print(f"Local Search Distance (via {nearby_node}): {distance}")
                             # ox.plot_graph_route(self.G, partial_route, route_linewidth=6, node_size=0, bgcolor='k')
                             if self.target_distance - self.tolerance < distance < self.target_distance + self.tolerance:
                                 # print(f"Distance Achieved: {distance}")
@@ -233,6 +234,7 @@ class AStarArcs:
                                 # ox.plot_graph_route(self.G, merged_route, route_linewidth=6, node_size=0, bgcolor='k')
                                 # local_search(nearby_node, partial_route)
                             if distance < self.target_distance + self.tolerance:
+                                print("calling, again")
                                 local_search(nearby_node, partial_route)
                         except nx.NetworkXNoPath:
                             continue
@@ -310,7 +312,7 @@ class AStarArcs:
         peak_4_no_duplicates = []
         for route in peak_4:
             if route[0] not in peak_4_no_duplicates:
-                ox.plot_graph_route(self.G, route[0], route_linewidth=6, node_size=0, bgcolor='k')
+                # ox.plot_graph_route(self.G, route[0], route_linewidth=6, node_size=0, bgcolor='k')
                 peak_4_no_duplicates.append(route[0])
                 # add_route_to_map(route[0], random_color())
         print(f"Number of 4 peak routes (no duplicates): {len(peak_4_no_duplicates)}")
@@ -395,19 +397,19 @@ def accessible_surface_score(surface):
 
 if __name__ == "__main__":
     # Edale to Castleton
-    # graph_builder = Graph_Builder((53.36486137451511, -1.8160056925378616), (53.34344386440596, -1.778107050662822), simplify=False)
-    # graph_builder = Graph_Builder((53.34344386440596, -1.778107050662822), (53.34344386440596, -1.778107050662822),simplify=False)
+    # graph_builder = Graph_Builder((53.36486137451511, -1.8160056925378616), (53.34344386440596, -1.778107050662822), simplify=True)
+    graph_builder = Graph_Builder((53.34344386440596, -1.778107050662822), (53.34344386440596, -1.778107050662822),simplify=False)
     # graph_builder = Graph_Builder((53.36486137451511, -1.8160056925378616), (53.34344386440596, -1.778107050662822),simplify=True, highway_score_function=accessible_highway_score, surface_score_function=accessible_surface_score)
     # Dragons Back Circle
     # graph_builder = Graph_Builder((53.181253754043624, -1.868378920162422), (53.181253754043624, -1.868378920162422),simplify=False)
     # Rydal
     # graph_builder = Graph_Builder((54.44851570433196, -2.9805133121389544), (54.44851570433196, -2.9805133121389544),simplify=True, highway_score_function=accessible_highway_score, surface_score_function=accessible_surface_score)
-    graph_builder = Graph_Builder((54.44851570433196, -2.9805133121389544), (54.44851570433196, -2.9805133121389544),simplify=False)
+    # graph_builder = Graph_Builder((54.44851570433196, -2.9805133121389544), (54.44851570433196, -2.9805133121389544),simplify=False)
 
 
 
 
-    astar = AStarArcs(graph_builder,16, 3)
+    astar = AStarArcs(graph_builder,10, 1)
     astar.main()
     route_coords = astar.ridge_walker()
 

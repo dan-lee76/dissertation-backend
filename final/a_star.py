@@ -58,7 +58,7 @@ def astar_path(G, source, target, visited_nodes=None, heuristic=None, weight="we
                 path.append(parent_node)
                 state = explored[state]
             path.reverse()
-            return path, b
+            return path, b, dist
 
         state = (curnode, b)
         if state in explored:
@@ -103,8 +103,11 @@ def astar_path_with_backtracking(G, source, target, visited_nodes=None, heuristi
     if backtrack_mode == 'iterative':
         for k in range(max_backtracks + 1):
             try:
-                path, b = astar_path(G, source, target, visited_nodes, heuristic, weight, cutoff, backtrack_limit=k)
-                return path, b
+                path, b, dist = astar_path(G, source, target, visited_nodes, heuristic, weight, cutoff, backtrack_limit=k)
+                print(dist)
+                if dist <= target_distance:
+                    return path, b
+                continue
             except nx.NetworkXNoPath:
                 continue
         raise nx.NetworkXNoPath(f"Node {target} not reachable from {source} with backtrack_limit={max_backtracks}")
@@ -120,7 +123,7 @@ def astar_path_with_backtracking(G, source, target, visited_nodes=None, heuristi
             path, b = astar_path(G, source, target, visited_nodes, heuristic, weight, cutoff, backtrack_limit=k)
             # Verify if the path satisfies the percentage
             if b <= int(percentage * len(path)):
-                return path, b
+                return path, b, dist
             else:
                 raise nx.NetworkXNoPath(f"Node {target} not reachable from {source} with percentage={b}%")
         except nx.NetworkXNoPath:
@@ -131,7 +134,7 @@ def astar_path_with_backtracking(G, source, target, visited_nodes=None, heuristi
             k = percentage  # Use percentage as a fixed integer limit
             try:
                 path, b = astar_path(G, source, target, visited_nodes, heuristic, weight, cutoff, backtrack_limit=k)
-                return path, b
+                return path, b, dist
             except nx.NetworkXNoPath:
                 raise nx.NetworkXNoPath(f"Node {target} not reachable from {source} with percentage={percentage}")
         else:
