@@ -5,6 +5,10 @@ from networkx.algorithms.shortest_paths.weighted import _weight_function
 import osmnx as ox
 
 
+global c
+c = 0
+
+
 def astar_path(G, source, target, visited_nodes=None, heuristic=None, weight="weight", cutoff=None, backtrack_limit=0):
     """
     A* pathfinding with a backtracking limit.
@@ -97,15 +101,25 @@ def astar_path(G, source, target, visited_nodes=None, heuristic=None, weight="we
     raise nx.NetworkXNoPath(f"Node {target} not reachable from {source} with backtrack_limit={backtrack_limit}")
 
 
-def astar_path_with_backtracking(G, source, target, visited_nodes=None, heuristic=None, weight="weight", cutoff=None,
-                                 backtrack_mode='iterative', percentage=None, max_backtracks=100, target_distance=None, length_calc=None):
 
+def astar_path_with_backtracking(G, source, target, visited_nodes=None, heuristic=None, weight="weight", cutoff=None,
+                                 backtrack_mode='iterative', percentage=None, max_backtracks=100, target_distance=None, lengths=None):
+    global c
     if backtrack_mode == 'iterative':
         for k in range(max_backtracks + 1):
             try:
                 path, b, dist = astar_path(G, source, target, visited_nodes, heuristic, weight, cutoff, backtrack_limit=k)
-                print(dist)
-                if dist <= target_distance:
+                # print(f"Target Distance={target_distance}")
+                if lengths is not None:
+                    manual_distance = sum(lengths[path[i]][path[i + 1]] for i in range(len(path) - 1))
+                else:
+                    manual_distance = sum(G.edges[path[i], path[i + 1], 0]['length'] for i in range(len(path) - 1))
+                # print(c)
+                # print(f"Manual Distance={manual_distance}")
+                if target_distance is None:
+                    return path, b
+                # print(dist, (1000 * target_distance))
+                if manual_distance <= (1000*target_distance):
                     return path, b
                 continue
             except nx.NetworkXNoPath:
@@ -118,12 +132,15 @@ def astar_path_with_backtracking(G, source, target, visited_nodes=None, heuristi
         # Estimate path length by running A* without backtrack constraints
         try:
             shortest_path = nx.astar_path(G, source, target, heuristic=heuristic, weight=weight)
+            c+=1
             L_estimate = len(shortest_path)
             k = int(percentage * L_estimate)
-            path, b = astar_path(G, source, target, visited_nodes, heuristic, weight, cutoff, backtrack_limit=k)
+            path, b, dist = astar_path(G, source, target, visited_nodes, heuristic, weight, cutoff, backtrack_limit=k)
+            c += 1
+            print(c)
             # Verify if the path satisfies the percentage
             if b <= int(percentage * len(path)):
-                return path, b, dist
+                return path, b
             else:
                 raise nx.NetworkXNoPath(f"Node {target} not reachable from {source} with percentage={b}%")
         except nx.NetworkXNoPath:
@@ -133,8 +150,8 @@ def astar_path_with_backtracking(G, source, target, visited_nodes=None, heuristi
         if percentage is not None and isinstance(percentage, int):
             k = percentage  # Use percentage as a fixed integer limit
             try:
-                path, b = astar_path(G, source, target, visited_nodes, heuristic, weight, cutoff, backtrack_limit=k)
-                return path, b, dist
+                path, b, dist = astar_path(G, source, target, visited_nodes, heuristic, weight, cutoff, backtrack_limit=k)
+                return path, b
             except nx.NetworkXNoPath:
                 raise nx.NetworkXNoPath(f"Node {target} not reachable from {source} with percentage={percentage}")
         else:
@@ -142,6 +159,7 @@ def astar_path_with_backtracking(G, source, target, visited_nodes=None, heuristi
 
     else:
         raise ValueError("backtrack_mode must be 'iterative', 'fixed', or 'limit'")
+
 
 
 # Example usage

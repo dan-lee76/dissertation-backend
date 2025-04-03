@@ -100,6 +100,11 @@ class Graph_Builder:
         print(f"\t- Adding Edge Gradient...")
         self.add_edge_gradient()
 
+        print(f"\t- Adding Edge Lengths...")
+        self.edge_lengths = {}
+        for u, v, data in self.G.edges(data=True):
+            self.edge_lengths.setdefault(u, {})[v] = data['length']
+
         # self.view_green()
         # self.view_distance_score()
         # self.view_peaks()
@@ -126,8 +131,8 @@ class Graph_Builder:
         # nc = ox.plot.get_node_colors_by_attr(self.G, "elevation", cmap="plasma", num_bins=5, equal_size=False)
         # fig, ax = ox.plot.plot_graph(self.G, node_color=nc, node_size=5, edge_linewidth=0.5, edge_color='gray')
 
-        # ec = ox.plot.get_edge_colors_by_attr(self.G, "fitness", cmap="plasma", num_bins=10, equal_size=True)
-        # ox.plot_graph(self.G, edge_color=ec, edge_linewidth=0.75, node_size=0)
+        ec = ox.plot.get_edge_colors_by_attr(self.G, "fitness", cmap="plasma", num_bins=10, equal_size=True)
+        ox.plot_graph(self.G, edge_color=ec, edge_linewidth=0.75, node_size=0)
 
 
 
@@ -430,6 +435,9 @@ class Graph_Builder:
         for u, v in zip(route[:-1], route[1:]):
             x.append(self.G[u][v][0]['length'])
         return sum(x)
+
+    def get_edge_lengths(self):
+        return self.edge_lengths
 
 
     def get_graph(self):
