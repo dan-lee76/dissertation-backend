@@ -98,7 +98,7 @@ def astar_path(G, source, target, visited_nodes=None, heuristic=None, weight="we
 
 def astar_path_with_backtracking(G, source, target, visited_nodes=None, heuristic=None, weight="weight", cutoff=None,
                                  backtrack_mode='iterative', percentage=None, max_backtracks=100, target_distance=None, lengths=None):
-    if backtrack_mode == 'iterative':
+    if backtrack_mode == 'iterative': # Refactoring this to not include lengths, target_dis and the extra astar_path, does improve performance. 
         for k in range(max_backtracks + 1):
             try:
                 path, b, dist = astar_path(G, source, target, visited_nodes, heuristic, weight, cutoff, backtrack_limit=k)

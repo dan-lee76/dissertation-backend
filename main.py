@@ -38,8 +38,8 @@ class AStarArcs:
         )
 
         def heuristic(u, v):
-            # return self.min_factor * self.sp_distance.get(u, float('inf'))
-            return 0
+            return self.min_factor * self.sp_distance.get(u, float('inf'))
+            # return 0 # Turns search into UCS which is quicker
 
         self.heuristic = heuristic
         self.edge_lengths = self.graph_builder.get_edge_lengths()
@@ -78,8 +78,8 @@ class AStarArcs:
         if self.normal_nodes == 'all':
             nodes_to_use = self.coords
         else:  # 'top10'
-            num_nodes = max(1, int(len(self.coords) * 0.1))  # Ensure at least 1 node
-            nodes_to_use = self.coords[:num_nodes]  # Top 10% with lowest fitness (since coords is sorted)
+            num_nodes = max(1, int(len(self.coords) * 0.1))
+            nodes_to_use = self.coords[:num_nodes]  
         print("Running normal generation...")
         for node in nodes_to_use:
             converted_node = node
@@ -167,7 +167,7 @@ class AStarArcs:
                                                      'peaks': len(self.graph_builder.get_peak_nodes(merged_route)),
                                                      'distance': distance})
                             running_dist = self.graph_builder.get_route_distance(partial_route) / 1000
-                            if running_dist < self.target_distance + self.tolerance:
+                            if running_dist < self.target_distance + self.tolerance: # using distance instead of running_distance speeds performance, however, causes missed routes
                                 local_search(nearby_node, partial_route, running_dist)
                         except nx.NetworkXNoPath:
                             continue
